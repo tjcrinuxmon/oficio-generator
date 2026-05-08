@@ -1,0 +1,1159 @@
+// =====================================================
+// app.js — Sistema de Oficios INE/DEAJ
+// =====================================================
+
+// ── Tipo activo de documento ───────────────────────
+let currentTipo = 'oficio';
+let currentModalAcuse = null; // acuse_path del documento abierto en el modal
+
+// ── Catálogos compartidos ───────────────────────────
+const AREAS = [
+    'Dirección Ejecutiva de Asuntos Jurídicos',
+    'Dirección de Asuntos HASL',
+    'Dirección de Asuntos Laborales',
+    'Dirección de Contratos y Convenios',
+    'Dirección de Instrucción Recursal',
+    'Dirección de Normatividad y Consulta',
+    'Dirección de Servicios Legales',
+    'Coordinación Administrativa',
+    'Coordinacion de Análisis de Información y Control Documental',
+];
+
+const URS = [
+    'Dirección Ejecutiva del Registro Federal de Electores (DERFE)',
+    'Dirección Ejecutiva de Prerrogativas y Partidos Políticos (DEPPP)',
+    'Dirección Ejecutiva de Organización Electoral (DEOE)',
+    'Dirección Ejecutiva del Servicio Profesional Electoral Nacional (DESPEN)',
+    'Dirección Ejecutiva de Capacitación Electoral y Educación Cívica (DECEyEC)',
+    'Dirección Ejecutiva de Administración (DEA)',
+    'Dirección Ejecutiva de Asuntos Jurídicos (DEAJ)',
+    'Presidencia del Consejo General',
+    'Secretaría Ejecutiva',
+    'Coordinación Nacional de Comunicación Social (CNCS)',
+    'Coordinación de Asuntos Internacionales (CAI)',
+    'Unidad Técnica de Servicios de Informática (UTSI)',
+    'Dirección del Secretariado',
+    'Unidad Técnica de Igualdad de Género y No Discriminación (UTIGyND)',
+    'Unidad Técnica de lo Contencioso Electoral (UTCE)',
+    'Unidad Técnica de Vinculación con los Organismos Públicos Locales (UTVOPL)',
+    'Unidad Técnica de Fiscalización (UTF)',
+    'Unidad Técnica de Transparencia y Protección de Datos Personales (UTTyPDP)',
+];
+
+// ── Estado global ──────────────────────────────────
+const state = {
+    token: localStorage.getItem('ine_token'),
+    user: null,
+    view: 'dashboard',
+    oficios: [],
+    firmantes: [],
+    anios: [],
+    usuarios: [],
+};
+
+// ── API helper ─────────────────────────────────────
+async function api(method, path, body = null, isFormData = false) {
+    const opts = { method, headers: { Authorization: `Bearer ${state.token}` } };
+    if (body && !isFormData) {
+        opts.headers['Content-Type'] = 'application/json';
+        opts.body = JSON.stringify(body);
+    } else if (body) {
+        opts.body = body; // FormData
+    }
+    const res = await fetch(`/api${path}`, opts);
+    if (res.status === 401) { logout(); return null; }
+    if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: res.statusText }));
+        throw new Error(err.error || 'Error desconocido');
+    }
+    const ct = res.headers.get('Content-Type') || '';
+    if (ct.includes('application/json')) return res.json();
+    return res; // para descargas
+}
+
+// ── Toast ───────────────────────────────────────────
+function toast(msg, type = 'info') {
+    const icons = { success: '✓', error: '✕', info: 'ℹ' };
+    const el = document.createElement('div');
+    el.className = `toast toast-${type}`;
+    el.innerHTML = `<span class="toast-icon">${icons[type] ?? 'ℹ'}</span><span>${msg}</span>`;
+    document.getElementById('toast-container').appendChild(el);
+    setTimeout(() => el.remove(), 4500);
+}
+
+// ── Utilidades ──────────────────────────────────────
+function formatFecha(f) {
+    if (!f) return '—';
+    const d = new Date(f.includes('T') ? f : f + 'T12:00:00');
+    return d.toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit', year: '2-digit' });
+}
+
+function labelEstatus(e) {
+    return { borrador: 'Borrador', enviado: 'Enviado', recibido: 'Recibido', archivado: 'Archivado', cancelado: 'Cancelado' }[e] || e;
+}
+
+async function fetchDownload(url, filename) {
+    try {
+        const res = await fetch(url, { headers: { Authorization: `Bearer ${state.token}` } });
+        if (!res.ok) { toast('Error al exportar', 'error'); return; }
+        const blob = await res.blob();
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(a.href);
+    } catch (e) {
+        toast(e.message, 'error');
+    }
+}
+
+// ── Auth ────────────────────────────────────────────
+async function login(email, password) {
+    const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Error al iniciar sesión');
+    state.token = data.token;
+    state.user = data.user;
+    localStorage.setItem('ine_token', data.token);
+}
+
+function logout() {
+    state.token = null;
+    state.user = null;
+    localStorage.removeItem('ine_token');
+    document.getElementById('login-page').classList.remove('hidden');
+    document.getElementById('app').classList.add('hidden');
+}
+
+// ── Navegación ──────────────────────────────────────
+function showView(view) {
+    state.view = view;
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    document.getElementById(`view-${view}`)?.classList.add('active');
+    const navId = view === 'nuevo' ? 'nav-selector' : `nav-${view}`;
+    document.getElementById(navId)?.classList.add('active');
+
+    if (view === 'dashboard') loadDashboard();
+    if (view === 'nuevo') loadNuevo();
+    if (view === 'historial') loadHistorial();
+    if (view === 'firmantes') loadFirmantes();
+    if (view === 'anios') loadAnios();
+    if (view === 'usuarios') loadUsuarios();
+}
+
+// ── Dashboard helpers ────────────────────────────────
+function renderRecientes(containerId, items, emptyMsg) {
+    const container = document.getElementById(containerId);
+    if (!items.length) {
+        container.innerHTML = `<p class="recientes-empty">${emptyMsg}</p>`;
+        return;
+    }
+    container.innerHTML = `
+      <div class="table-wrapper" style="margin:0">
+        <table class="data-table">
+          <thead><tr>
+            <th>Número</th>
+            <th>Fecha</th>
+            <th>Asunto</th>
+            <th>Estatus</th>
+          </tr></thead>
+          <tbody>
+            ${items.map(o => `
+              <tr class="reciente-row" data-id="${o.id}">
+                <td><span class="oficio-num">${o.numero_oficio}</span></td>
+                <td style="white-space:nowrap">${formatFecha(o.fecha)}</td>
+                <td class="td-asunto" title="${o.asunto}">${o.asunto}</td>
+                <td><span class="status-badge status-${o.estatus}">${labelEstatus(o.estatus)}</span></td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>`;
+    container.querySelectorAll('.reciente-row').forEach(el =>
+        el.addEventListener('click', () => openOficioModal(el.dataset.id))
+    );
+}
+
+// ── Dashboard ───────────────────────────────────────
+async function loadDashboard() {
+    try {
+        const [oficios, anioActivo] = await Promise.all([
+            api('GET', '/oficios'),
+            api('GET', '/anios/activo').catch(() => null),
+        ]);
+
+        const badge = document.getElementById('anio-activo-badge');
+        badge.textContent = anioActivo ? `Año ${anioActivo.anio}` : '';
+
+        const nameEl = document.getElementById('dash-user-name');
+        if (nameEl && state.user) nameEl.textContent = state.user.nombre;
+
+        const ofs = oficios.filter(o => (o.tipo || 'oficio') === 'oficio');
+        const ots = oficios.filter(o => o.tipo === 'opinion');
+
+        // Stats oficios
+        document.getElementById('of-total').textContent = ofs.length;
+        document.getElementById('of-borrador').textContent = ofs.filter(o => o.estatus === 'borrador').length;
+        document.getElementById('of-enviado').textContent = ofs.filter(o => o.estatus === 'enviado').length;
+        document.getElementById('of-archivado').textContent = ofs.filter(o => o.estatus === 'archivado').length;
+
+        // Stats opiniones
+        document.getElementById('ot-total').textContent = ots.length;
+        document.getElementById('ot-borrador').textContent = ots.filter(o => o.estatus === 'borrador').length;
+        document.getElementById('ot-enviado').textContent = ots.filter(o => o.estatus === 'enviado').length;
+        document.getElementById('ot-archivado').textContent = ots.filter(o => o.estatus === 'archivado').length;
+
+        renderRecientes('dash-recientes-oficio', ofs.slice(0, 5), 'No hay oficios registrados aún.');
+        renderRecientes('dash-recientes-opinion', ots.slice(0, 5), 'No hay opiniones técnicas registradas aún.');
+    } catch (e) {
+        toast(e.message, 'error');
+    }
+}
+
+// ── Historial ───────────────────────────────────────
+async function loadHistorial(params = {}) {
+    // limpiar entradas vacías
+    Object.keys(params).forEach(k => { if (!params[k]) delete params[k]; });
+    const qs = new URLSearchParams(params).toString();
+    try {
+        const oficios = await api('GET', `/oficios${qs ? '?' + qs : ''}`);
+        state.oficios = oficios;
+        renderHistorialTable(oficios);
+    } catch (e) {
+        toast(e.message, 'error');
+    }
+}
+
+function renderHistorialTable(oficios) {
+    const tipo  = document.getElementById('filter-tipo').value;
+    const tbody = document.getElementById('historial-tbody');
+    const thead = document.querySelector('#historial-table thead tr');
+    const empty = document.getElementById('historial-empty');
+
+    if (!oficios.length) {
+        tbody.innerHTML = '';
+        empty.classList.remove('hidden');
+        return;
+    }
+    empty.classList.add('hidden');
+
+    // Columna central dinámica según tipo
+    const isOficio  = tipo === 'oficio';
+    const isOpinion = tipo === 'opinion';
+
+    const colHeader = isOficio  ? '<th>Destinatario</th>'
+                    : isOpinion ? '<th>UR Solicitante</th>'
+                    :             '<th>Tipo</th>';
+
+    thead.innerHTML = `
+        <th>Número / Folio</th>
+        <th>Fecha</th>
+        ${colHeader}
+        <th>Asunto</th>
+        <th>Firmante</th>
+        <th>Área</th>
+        <th>Estatus</th>
+        <th>Acuse</th>
+        <th>Acciones</th>`;
+
+    tbody.innerHTML = oficios.map(o => {
+        const colCell = isOficio  ? `<td class="td-truncate" title="${o.destinatario || ''}">${o.destinatario || '—'}</td>`
+                      : isOpinion ? `<td class="td-truncate" title="${o.url_solicitante || ''}">${o.url_solicitante || '—'}</td>`
+                      : `<td>${o.tipo === 'opinion'
+                            ? '<span class="tipo-badge tipo-opinion">Opinión</span>'
+                            : '<span class="tipo-badge tipo-oficio">Oficio</span>'}</td>`;
+        return `
+    <tr>
+      <td><span class="oficio-num">${o.numero_oficio}</span></td>
+      <td>${formatFecha(o.fecha)}</td>
+      ${colCell}
+      <td class="td-asunto" title="${o.asunto}">${o.asunto}</td>
+      <td class="td-truncate" title="${o.firmante_nombre || ''}">${o.firmante_nombre || '—'}</td>
+      <td class="td-truncate" title="${o.area}">${o.area}</td>
+      <td><span class="status-badge status-${o.estatus}">${labelEstatus(o.estatus)}</span></td>
+      <td>
+        ${o.acuse_path
+            ? `<button class="btn-acuse-si" data-id="${o.id}" title="Descargar acuse"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg></button>`
+            : '<span class="acuse-no">—</span>'}
+      </td>
+      <td>
+        <div class="table-actions">
+          <button class="btn btn-secondary btn-sm btn-icon" title="Ver / editar" onclick="openOficioModal(${o.id})">👁</button>
+        </div>
+      </td>
+    </tr>`;
+    }).join('');
+
+    tbody.querySelectorAll('.btn-acuse-si').forEach(el =>
+        el.addEventListener('click', () => downloadAcuse(el.dataset.id))
+    );
+}
+
+// ── Selector de tipo ─────────────────────────────────
+function selectTipo(tipo) {
+    currentTipo = tipo;
+    const isOpinion = tipo === 'opinion';
+    document.getElementById('form-title').textContent = isOpinion ? 'Nueva Opinión Técnica' : 'Nuevo Oficio';
+    const badge = document.getElementById('form-tipo-badge');
+    badge.className = `tipo-badge tipo-${tipo}`;
+    badge.textContent = isOpinion ? 'Opinión Técnica' : 'Oficio';
+    document.querySelector('#btn-generar .btn-text').textContent =
+        isOpinion ? '✉️ Generar Opinión Técnica' : '✉️ Generar Oficio';
+    applyTipoToggle(tipo);
+    showView('nuevo');
+}
+
+// ── Nuevo Oficio ─────────────────────────────────────
+async function loadNuevo() {
+    try {
+        const firmantes = await api('GET', '/firmantes');
+        state.firmantes = firmantes;
+        const sel = document.getElementById('of-firmante');
+        sel.innerHTML = '<option value="">— Seleccionar firmante —</option>' +
+            firmantes.map(f =>
+                `<option value="${f.id}">${f.nombre}${f.es_titular ? ' (Titular)' : ''}</option>`
+            ).join('');
+        // fecha por defecto
+        if (!document.getElementById('of-fecha').value) {
+            document.getElementById('of-fecha').value = new Date().toISOString().slice(0, 10);
+        }
+    } catch (e) {
+        toast(e.message, 'error');
+    }
+}
+
+// ── Modal Oficio Detalle ──────────────────────────────
+async function openOficioModal(id) {
+    try {
+        const [o, firmantes] = await Promise.all([
+            api('GET', `/oficios/${id}`),
+            state.firmantes.length ? Promise.resolve(state.firmantes) : api('GET', '/firmantes'),
+        ]);
+        state.firmantes = firmantes;
+
+        const estatusOpts = ['borrador', 'enviado', 'archivado', 'cancelado']
+            .map(e => `<option value="${e}" ${o.estatus === e ? 'selected' : ''}>${labelEstatus(e)}</option>`)
+            .join('');
+
+        const firmanteOpts = firmantes
+            .map(f => `<option value="${f.id}" ${o.firmante_id == f.id ? 'selected' : ''}>${f.nombre}${f.es_titular ? ' (Titular)' : ''}</option>`)
+            .join('');
+
+        currentModalAcuse = o.acuse_path || null;
+        const isAdmin = state.user.rol === 'admin';
+        const isOpinion = o.tipo === 'opinion';
+        const q = s => (s || '').replace(/"/g, '&quot;');
+        const areaOpts = AREAS.map(a => `<option value="${a}" ${o.area === a ? 'selected' : ''}>${a}</option>`).join('');
+        const urOpts = URS.map(u => `<option value="${u}" ${o.url_solicitante === u ? 'selected' : ''}>${u}</option>`).join('');
+
+        document.getElementById('modal-oficio-titulo').textContent = o.numero_oficio;
+        document.getElementById('modal-oficio-body').innerHTML = `
+      <div class="detail-grid">
+        <div class="detail-item full">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+            <span class="detail-label">${isOpinion ? 'Número de Opinión Técnica' : 'Número de Oficio'}</span>
+            ${isOpinion ? '<span class="tipo-badge tipo-opinion">Opinión Técnica</span>' : '<span class="tipo-badge tipo-oficio">Oficio</span>'}
+          </div>
+          <span class="detail-numero">${o.numero_oficio}</span>
+        </div>
+        <div class="detail-separator"></div>
+
+        <div class="detail-item">
+          <span class="detail-label">Fecha</span>
+          ${isAdmin
+            ? `<input type="date" id="det-fecha" class="filter-select" style="width:100%" value="${o.fecha || ''}">`
+            : `<span class="detail-value">${formatFecha(o.fecha)}</span>`}
+        </div>
+        <div class="detail-item">
+          <span class="detail-label">Estatus</span>
+          <select id="det-estatus" class="filter-select" style="width:100%">${estatusOpts}</select>
+        </div>
+
+        ${!isOpinion ? `
+        <div class="detail-item">
+          <span class="detail-label">Destinatario</span>
+          ${isAdmin
+            ? `<input type="text" id="det-destinatario" class="filter-select" style="width:100%" value="${q(o.destinatario)}">`
+            : `<span class="detail-value">${o.destinatario || '—'}</span>`}
+        </div>
+        <div class="detail-item">
+          <span class="detail-label">Cargo del Destinatario</span>
+          ${isAdmin
+            ? `<input type="text" id="det-cargo" class="filter-select" style="width:100%" value="${q(o.cargo_destinatario)}">`
+            : `<span class="detail-value">${o.cargo_destinatario || '—'}</span>`}
+        </div>` : `
+        <div class="detail-item full">
+          <span class="detail-label">UR (Unidad Requirente)</span>
+          ${isAdmin
+            ? `<select id="det-url-solicitante" class="filter-select" style="width:100%"><option value="">— Selecciona la UR —</option>${urOpts}</select>`
+            : `<span class="detail-value">${o.url_solicitante || '—'}</span>`}
+        </div>`}
+
+        <div class="detail-item full">
+          <span class="detail-label">Asunto</span>
+          ${isAdmin
+            ? `<textarea id="det-asunto" class="filter-select" style="width:100%;min-height:72px;resize:vertical">${o.asunto || ''}</textarea>`
+            : `<span class="detail-value">${o.asunto}</span>`}
+        </div>
+
+        <div class="detail-item">
+          <span class="detail-label">Firmante</span>
+          <select id="det-firmante" class="filter-select" style="width:100%">
+            <option value="">—</option>${firmanteOpts}
+          </select>
+        </div>
+        <div class="detail-item">
+          <span class="detail-label">Solicita</span>
+          ${isAdmin
+            ? `<input type="text" id="det-solicita" class="filter-select" style="width:100%" value="${q(o.solicita)}">`
+            : `<span class="detail-value">${o.solicita}</span>`}
+        </div>
+
+        <div class="detail-item">
+          <span class="detail-label">Área</span>
+          ${isAdmin
+            ? `<select id="det-area" class="filter-select" style="width:100%">${areaOpts}</select>`
+            : `<span class="detail-value">${o.area}</span>`}
+        </div>
+        <div class="detail-item">
+          <span class="detail-label">Registrado por</span>
+          <span class="detail-value">${o.creado_por_nombre || '—'}</span>
+        </div>
+
+        ${o.justificacion_firmante ? `
+        <div class="detail-item full">
+          <span class="detail-label">Justificación de firmante</span>
+          ${isAdmin
+            ? `<textarea id="det-justificacion" class="filter-select" style="width:100%;min-height:60px;resize:vertical">${o.justificacion_firmante}</textarea>`
+            : `<div class="justif-box">${o.justificacion_firmante}</div>`}
+        </div>` : ''}
+
+        <div id="acuse-wrapper" style="${o.estatus === 'borrador' ? 'display:none' : ''}">
+        <div class="detail-separator"></div>
+
+        <div class="detail-item full acuse-section">
+          <div class="acuse-section-header">
+            <span class="detail-label">Acuse de recibo</span>
+            ${o.acuse_path ? '<span class="acuse-badge">PDF adjunto</span>' : ''}
+          </div>
+
+          ${o.acuse_path ? `
+          <div class="acuse-attached-row">
+            <div class="acuse-attached-info">
+              <svg class="acuse-pdf-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>
+              <div>
+                <div class="acuse-file-name">Acuse — ${o.numero_oficio}</div>
+                <div class="acuse-file-hint">Vinculado a este documento</div>
+              </div>
+            </div>
+            <div class="acuse-attached-btns">
+              <button class="btn btn-secondary btn-sm btn-icon-only" title="Ver PDF" onclick="viewAcuse(${o.id})">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+              <button class="btn btn-secondary btn-sm btn-icon-only" title="Descargar PDF" onclick="downloadAcuse(${o.id})">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              </button>
+              <button class="btn btn-danger btn-sm btn-icon-only" title="Eliminar acuse" onclick="deleteAcuse(${o.id})">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+              </button>
+            </div>
+          </div>
+          <div class="acuse-replace-label">Reemplazar archivo:</div>
+          ` : ''}
+
+          <div class="acuse-dropzone" id="acuse-dropzone" onclick="document.getElementById('det-acuse-file').click()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            <div>
+              <div class="acuse-dropzone-main">${o.acuse_path ? 'Seleccionar nuevo PDF' : 'Seleccionar PDF'}</div>
+              <div class="acuse-dropzone-hint">${o.acuse_path
+                ? 'El nuevo archivo <strong>reemplazará</strong> el acuse actual'
+                : `El archivo quedará vinculado al documento <strong>${o.numero_oficio}</strong>`}
+              </div>
+            </div>
+          </div>
+          <input type="file" id="det-acuse-file" accept=".pdf" style="display:none" onchange="onAcuseFileSelected(this,${o.id})" />
+
+          <div id="acuse-selected-row" class="acuse-selected-row hidden">
+            <svg class="acuse-pdf-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>
+            <span id="acuse-selected-name" class="acuse-file-name"></span>
+            <button class="btn btn-primary btn-sm acuse-btn-icon" id="acuse-upload-btn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              Subir acuse
+            </button>
+          </div>
+        </div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
+        <button class="btn btn-secondary" onclick="closeModal('modal-oficio')">Cancelar</button>
+        <button class="btn btn-primary" onclick="saveOficioChanges(${o.id})">Guardar cambios</button>
+      </div>
+    `;
+        openModal('modal-oficio');
+
+        document.getElementById('det-estatus').addEventListener('change', function () {
+            document.getElementById('acuse-wrapper').style.display =
+                this.value === 'borrador' ? 'none' : '';
+        });
+    } catch (e) {
+        toast(e.message, 'error');
+    }
+}
+
+async function saveOficioChanges(id) {
+    const body = {};
+
+    const estatus    = document.getElementById('det-estatus')?.value;
+    const firmante_id = document.getElementById('det-firmante')?.value;
+
+    if (['enviado', 'archivado'].includes(estatus) && !currentModalAcuse) {
+        toast('Debes subir el acuse antes de cambiar a este estatus', 'error');
+        return;
+    }
+
+    if (estatus)     body.estatus     = estatus;
+    if (firmante_id) body.firmante_id = firmante_id;
+
+    if (state.user.rol === 'admin') {
+        const fecha       = document.getElementById('det-fecha')?.value;
+        const asunto      = document.getElementById('det-asunto')?.value;
+        const solicita    = document.getElementById('det-solicita')?.value;
+        const area        = document.getElementById('det-area')?.value;
+        const destinatario = document.getElementById('det-destinatario')?.value;
+        const cargo       = document.getElementById('det-cargo')?.value;
+        const ur          = document.getElementById('det-url-solicitante')?.value;
+        const justif      = document.getElementById('det-justificacion')?.value;
+
+        if (fecha)       body.fecha               = fecha;
+        if (asunto)      body.asunto              = asunto;
+        if (solicita)    body.solicita            = solicita;
+        if (area)        body.area                = area;
+        if (destinatario !== undefined && destinatario !== null) body.destinatario     = destinatario;
+        if (cargo        !== undefined && cargo        !== null) body.cargo_destinatario = cargo;
+        if (ur           !== undefined && ur           !== null) body.url_solicitante  = ur;
+        if (justif       !== undefined && justif       !== null) body.justificacion_firmante = justif;
+    }
+
+    try {
+        await api('PUT', `/oficios/${id}`, body);
+        toast('Documento actualizado', 'success');
+        closeModal('modal-oficio');
+        if (state.view === 'historial') loadHistorial();
+        if (state.view === 'dashboard') loadDashboard();
+    } catch (e) {
+        toast(e.message, 'error');
+    }
+}
+
+function onAcuseFileSelected(input, id) {
+    const row = document.getElementById('acuse-selected-row');
+    const nameEl = document.getElementById('acuse-selected-name');
+    if (input.files[0]) {
+        nameEl.textContent = input.files[0].name;
+        row.classList.remove('hidden');
+        document.getElementById('acuse-upload-btn').onclick = () => uploadAcuse(id);
+    } else {
+        row.classList.add('hidden');
+    }
+}
+
+async function uploadAcuse(id) {
+    const file = document.getElementById('det-acuse-file')?.files[0];
+    if (!file) { toast('Selecciona un archivo PDF', 'error'); return; }
+    const fd = new FormData();
+    fd.append('acuse', file);
+    try {
+        await api('POST', `/oficios/${id}/acuse`, fd, true);
+        const sel = document.getElementById('det-estatus');
+        if (sel) {
+            sel.value = 'archivado';
+            document.getElementById('acuse-wrapper').style.display = '';
+        }
+        toast('Acuse subido — estatus cambiado a Archivado', 'success');
+        if (state.view === 'historial') loadHistorial();
+        if (state.view === 'dashboard') loadDashboard();
+        openOficioModal(id);
+    } catch (e) {
+        toast(e.message, 'error');
+    }
+}
+
+async function viewAcuse(id) {
+    try {
+        const res = await fetch(`/api/oficios/${id}/acuse`, {
+            headers: { Authorization: `Bearer ${state.token}` },
+        });
+        if (!res.ok) { toast('Acuse no disponible', 'error'); return; }
+        const blob = await res.blob();
+        const url = URL.createObjectURL(new Blob([await blob.arrayBuffer()], { type: 'application/pdf' }));
+        window.open(url, '_blank');
+    } catch (e) {
+        toast(e.message, 'error');
+    }
+}
+
+async function downloadAcuse(id) {
+    try {
+        const res = await fetch(`/api/oficios/${id}/acuse`, {
+            headers: { Authorization: `Bearer ${state.token}` },
+        });
+        if (!res.ok) { toast('Acuse no disponible', 'error'); return; }
+        const blob = await res.blob();
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `Acuse_${id}.pdf`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+    } catch (e) {
+        toast(e.message, 'error');
+    }
+}
+
+async function deleteAcuse(id) {
+    if (!confirm('¿Eliminar el acuse adjunto? El estatus regresará a Enviado.')) return;
+    try {
+        await api('DELETE', `/oficios/${id}/acuse`);
+        toast('Acuse eliminado — estatus regresado a Enviado', 'success');
+        if (state.view === 'historial') loadHistorial();
+        if (state.view === 'dashboard') loadDashboard();
+        openOficioModal(id);
+    } catch (e) {
+        toast(e.message, 'error');
+    }
+}
+
+// ── Firmantes ────────────────────────────────────────
+async function loadFirmantes() {
+    try {
+        const firmantes = await api('GET', '/firmantes');
+        state.firmantes = firmantes;
+        document.getElementById('firmantes-tbody').innerHTML = firmantes.map(f => `
+      <tr>
+        <td>${f.nombre}</td>
+        <td>${f.cargo}</td>
+        <td>${f.es_titular ? '<span class="titular-badge">Titular</span>' : '—'}</td>
+        <td><span class="status-badge ${f.activo ? 'status-recibido' : 'status-archivado'}">${f.activo ? 'Activo' : 'Inactivo'}</span></td>
+        <td>
+          <div class="table-actions">
+            <button class="btn btn-secondary btn-sm" onclick="openFirmanteModal(${f.id})">Editar</button>
+            ${!f.es_titular ? `<button class="btn btn-danger btn-sm" onclick="deleteFirmante(${f.id})">Eliminar</button>` : ''}
+          </div>
+        </td>
+      </tr>
+    `).join('');
+    } catch (e) {
+        toast(e.message, 'error');
+    }
+}
+
+function openFirmanteModal(id = null) {
+    const f = id ? state.firmantes.find(x => x.id === id) : null;
+    document.getElementById('modal-title').textContent = f ? 'Editar Firmante' : 'Nuevo Firmante';
+    document.getElementById('modal-body').innerHTML = `
+    <div class="form-group" style="margin-bottom:16px">
+      <label>Nombre *</label>
+      <input type="text" id="fm-nombre" value="${f?.nombre || ''}" placeholder="Nombre completo" />
+    </div>
+    <div class="form-group" style="margin-bottom:16px">
+      <label>Cargo *</label>
+      <input type="text" id="fm-cargo" value="${f?.cargo || ''}" placeholder="Cargo o puesto" />
+    </div>
+    <div class="form-group" style="margin-bottom:10px">
+      <label style="flex-direction:row;align-items:center;gap:8px;text-transform:none;letter-spacing:0;font-size:13px;font-weight:500">
+        <input type="checkbox" id="fm-titular" ${f?.es_titular ? 'checked' : ''} />
+        Es titular
+      </label>
+    </div>
+    ${f ? `
+    <div class="form-group">
+      <label style="flex-direction:row;align-items:center;gap:8px;text-transform:none;letter-spacing:0;font-size:13px;font-weight:500">
+        <input type="checkbox" id="fm-activo" ${f.activo ? 'checked' : ''} />
+        Activo
+      </label>
+    </div>` : ''}
+  `;
+    document.getElementById('modal-footer').innerHTML = `
+    <button class="btn btn-secondary" onclick="closeModal('modal-generic')">Cancelar</button>
+    <button class="btn btn-primary" onclick="saveFirmante(${id ?? 'null'})">Guardar</button>
+  `;
+    openModal('modal-generic');
+}
+
+async function saveFirmante(id) {
+    const nombre = document.getElementById('fm-nombre').value.trim();
+    const cargo = document.getElementById('fm-cargo').value.trim();
+    const es_titular = document.getElementById('fm-titular').checked;
+    const activoEl = document.getElementById('fm-activo');
+    if (!nombre || !cargo) { toast('Nombre y cargo son requeridos', 'error'); return; }
+    try {
+        if (id) {
+            await api('PUT', `/firmantes/${id}`, { nombre, cargo, es_titular, activo: activoEl ? activoEl.checked : undefined });
+        } else {
+            await api('POST', '/firmantes', { nombre, cargo, es_titular });
+        }
+        toast('Firmante guardado', 'success');
+        closeModal('modal-generic');
+        loadFirmantes();
+    } catch (e) {
+        toast(e.message, 'error');
+    }
+}
+
+async function deleteFirmante(id) {
+    if (!confirm('¿Eliminar este firmante?')) return;
+    try {
+        await api('DELETE', `/firmantes/${id}`);
+        toast('Firmante eliminado', 'success');
+        loadFirmantes();
+    } catch (e) {
+        toast(e.message, 'error');
+    }
+}
+
+// ── Años ─────────────────────────────────────────────
+async function loadAnios() {
+    try {
+        const anios = await api('GET', '/anios');
+        state.anios = anios;
+        document.getElementById('anios-tbody').innerHTML = anios.map(a => `
+      <tr>
+        <td><strong>${a.anio}</strong></td>
+        <td>${a.correlativo_inicio}</td>
+        <td>${a.correlativo_actual}</td>
+        <td style="font-family:monospace;font-size:12px;color:var(--ine-purple)">
+          ${a.correlativo_actual > a.correlativo_inicio
+                ? `INE/DEAJ/${String(a.correlativo_actual).padStart(3, '0')}/${a.anio}`
+                : '—'}
+        </td>
+        <td><span class="status-badge ${a.activo ? 'status-recibido' : 'status-archivado'}">${a.activo ? 'Activo' : 'Inactivo'}</span></td>
+        <td>
+          <div class="table-actions">
+            ${!a.activo ? `<button class="btn btn-primary btn-sm" onclick="activarAnio(${a.id})">Activar</button>` : ''}
+            <button class="btn btn-secondary btn-sm" onclick="openAnioModal(${a.id})">Editar</button>
+            ${!a.activo ? `<button class="btn btn-danger btn-sm" onclick="deleteAnio(${a.id})">Eliminar</button>` : ''}
+          </div>
+        </td>
+      </tr>
+    `).join('');
+    } catch (e) {
+        toast(e.message, 'error');
+    }
+}
+
+function openAnioModal(id = null) {
+    const a = id ? state.anios.find(x => x.id === id) : null;
+    document.getElementById('modal-title').textContent = a ? 'Editar Correlativo' : 'Nuevo Año';
+    document.getElementById('modal-body').innerHTML = `
+    ${!a ? `<div class="form-group" style="margin-bottom:16px">
+      <label>Año *</label>
+      <input type="number" id="an-anio" value="${new Date().getFullYear()}" min="2020" max="2099" />
+    </div>` : ''}
+    <div class="form-group">
+      <label>Correlativo Inicial *</label>
+      <input type="number" id="an-correlativo" value="${a?.correlativo_inicio ?? 1}" min="1" />
+    </div>
+  `;
+    document.getElementById('modal-footer').innerHTML = `
+    <button class="btn btn-secondary" onclick="closeModal('modal-generic')">Cancelar</button>
+    <button class="btn btn-primary" onclick="saveAnio(${id ?? 'null'})">Guardar</button>
+  `;
+    openModal('modal-generic');
+}
+
+async function saveAnio(id) {
+    const correlativo_inicio = parseInt(document.getElementById('an-correlativo').value);
+    if (!correlativo_inicio) { toast('Correlativo requerido', 'error'); return; }
+    try {
+        if (id) {
+            await api('PUT', `/anios/${id}`, { correlativo_inicio });
+        } else {
+            const anio = parseInt(document.getElementById('an-anio').value);
+            if (!anio) { toast('Año requerido', 'error'); return; }
+            await api('POST', '/anios', { anio, correlativo_inicio });
+        }
+        toast('Año guardado', 'success');
+        closeModal('modal-generic');
+        loadAnios();
+    } catch (e) {
+        toast(e.message, 'error');
+    }
+}
+
+async function activarAnio(id) {
+    if (!confirm('¿Activar este año? El año activo actual será desactivado.')) return;
+    try {
+        await api('PUT', `/anios/${id}/activar`);
+        toast('Año activado', 'success');
+        loadAnios();
+    } catch (e) {
+        toast(e.message, 'error');
+    }
+}
+
+async function deleteAnio(id) {
+    if (!confirm('¿Eliminar este año?')) return;
+    try {
+        await api('DELETE', `/anios/${id}`);
+        toast('Año eliminado', 'success');
+        loadAnios();
+    } catch (e) {
+        toast(e.message, 'error');
+    }
+}
+
+// ── Usuarios ──────────────────────────────────────────
+async function loadUsuarios() {
+    try {
+        const usuarios = await api('GET', '/usuarios');
+        state.usuarios = usuarios;
+        document.getElementById('usuarios-tbody').innerHTML = usuarios.map(u => `
+      <tr>
+        <td>${u.nombre}</td>
+        <td>${u.email}</td>
+        <td><span class="status-badge ${u.rol === 'admin' ? 'status-enviado' : 'status-borrador'}">${u.rol}</span></td>
+        <td><span class="status-badge ${u.activo ? 'status-recibido' : 'status-archivado'}">${u.activo ? 'Activo' : 'Inactivo'}</span></td>
+        <td>${formatFecha(u.creado_en)}</td>
+        <td>
+          <div class="table-actions">
+            <button class="btn btn-secondary btn-sm" onclick="openUsuarioModal(${u.id})">Editar</button>
+            ${u.activo
+                ? `<button class="btn btn-danger btn-sm" onclick="toggleUsuario(${u.id}, false)">Desactivar</button>`
+                : `<button class="btn btn-secondary btn-sm" onclick="toggleUsuario(${u.id}, true)">Activar</button>`}
+          </div>
+        </td>
+      </tr>
+    `).join('');
+    } catch (e) {
+        toast(e.message, 'error');
+    }
+}
+
+function openUsuarioModal(id = null) {
+    const u = id ? state.usuarios.find(x => x.id === id) : null;
+    document.getElementById('modal-title').textContent = u ? 'Editar Usuario' : 'Nuevo Usuario';
+    document.getElementById('modal-body').innerHTML = `
+    <div class="form-group" style="margin-bottom:16px">
+      <label>Nombre *</label>
+      <input type="text" id="us-nombre" value="${u?.nombre || ''}" placeholder="Nombre completo" />
+    </div>
+    <div class="form-group" style="margin-bottom:16px">
+      <label>Email *</label>
+      <input type="email" id="us-email" value="${u?.email || ''}" placeholder="correo@ine.mx" />
+    </div>
+    <div class="form-group" style="margin-bottom:16px">
+      <label>${u ? 'Nueva contraseña (dejar vacío para no cambiar)' : 'Contraseña *'}</label>
+      <input type="password" id="us-password" placeholder="••••••••" />
+    </div>
+    <div class="form-group">
+      <label>Rol</label>
+      <select id="us-rol">
+        <option value="usuario" ${u?.rol !== 'admin' ? 'selected' : ''}>Usuario</option>
+        <option value="admin"   ${u?.rol === 'admin' ? 'selected' : ''}>Administrador</option>
+      </select>
+    </div>
+  `;
+    document.getElementById('modal-footer').innerHTML = `
+    <button class="btn btn-secondary" onclick="closeModal('modal-generic')">Cancelar</button>
+    <button class="btn btn-primary" onclick="saveUsuario(${id ?? 'null'})">Guardar</button>
+  `;
+    openModal('modal-generic');
+}
+
+async function saveUsuario(id) {
+    const nombre = document.getElementById('us-nombre').value.trim();
+    const email = document.getElementById('us-email').value.trim();
+    const password = document.getElementById('us-password').value;
+    const rol = document.getElementById('us-rol').value;
+    if (!nombre || !email) { toast('Nombre y email son requeridos', 'error'); return; }
+    if (!id && !password) { toast('La contraseña es requerida', 'error'); return; }
+    const body = { nombre, email, rol };
+    if (password) body.password = password;
+    try {
+        if (id) {
+            await api('PUT', `/usuarios/${id}`, body);
+        } else {
+            await api('POST', '/usuarios', body);
+        }
+        toast('Usuario guardado', 'success');
+        closeModal('modal-generic');
+        loadUsuarios();
+    } catch (e) {
+        toast(e.message, 'error');
+    }
+}
+
+async function toggleUsuario(id, activo) {
+    try {
+        await api('PUT', `/usuarios/${id}`, { activo });
+        toast(`Usuario ${activo ? 'activado' : 'desactivado'}`, 'success');
+        loadUsuarios();
+    } catch (e) {
+        toast(e.message, 'error');
+    }
+}
+
+// ── Modal helpers ─────────────────────────────────────
+function openModal(id) { document.getElementById(id).classList.remove('hidden'); }
+function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+
+// =====================================================
+// Listeners estáticos
+// =====================================================
+
+// Sidebar toggle
+document.getElementById('sidebar-toggle').addEventListener('click', () => {
+    document.getElementById('sidebar').classList.toggle('collapsed');
+});
+
+// Navegación
+document.querySelectorAll('.nav-item[data-view]').forEach(item =>
+    item.addEventListener('click', e => { e.preventDefault(); showView(item.dataset.view); })
+);
+
+// Toggle contraseña visible
+document.getElementById('btn-toggle-password').addEventListener('click', () => {
+    const input = document.getElementById('login-password');
+    const isText = input.type === 'text';
+    input.type = isText ? 'password' : 'text';
+    document.getElementById('icon-eye').style.display = isText ? '' : 'none';
+    document.getElementById('icon-eye-off').style.display = isText ? 'none' : '';
+});
+
+// Login
+document.getElementById('login-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const btn = document.getElementById('login-btn');
+    const errEl = document.getElementById('login-error');
+    const spinner = btn.querySelector('.btn-spinner');
+    const text = btn.querySelector('.btn-text');
+
+    errEl.classList.add('hidden');
+    text.classList.add('hidden');
+    spinner.classList.remove('hidden');
+    btn.disabled = true;
+
+    try {
+        await login(
+            document.getElementById('login-email').value.trim(),
+            document.getElementById('login-password').value,
+        );
+        initApp();
+    } catch (ex) {
+        errEl.textContent = ex.message;
+        errEl.classList.remove('hidden');
+    } finally {
+        text.classList.remove('hidden');
+        spinner.classList.add('hidden');
+        btn.disabled = false;
+    }
+});
+
+// Logout
+document.getElementById('logout-btn').addEventListener('click', () => {
+    if (confirm('¿Cerrar sesión?')) logout();
+});
+
+// Nuevo oficio – submit
+document.getElementById('nuevo-oficio-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const btn = document.getElementById('btn-generar');
+    const errEl = document.getElementById('nuevo-error');
+    const spinner = btn.querySelector('.btn-spinner');
+    const text = btn.querySelector('.btn-text');
+
+    errEl.classList.add('hidden');
+    text.classList.add('hidden');
+    spinner.classList.remove('hidden');
+    btn.disabled = true;
+
+    try {
+        const tipo = currentTipo;
+        const isOpinion = tipo === 'opinion';
+        const body = {
+            tipo,
+            fecha: document.getElementById('of-fecha').value,
+            asunto: document.getElementById('of-asunto').value,
+            firmante_id: document.getElementById('of-firmante').value,
+            solicita: document.getElementById('of-solicita').value,
+            area: document.getElementById('of-area').value,
+            justificacion_firmante: document.getElementById('of-justificacion').value || undefined,
+            ...(isOpinion
+                ? { url_solicitante: document.getElementById('of-url-solicitante').value }
+                : { destinatario: document.getElementById('of-destinatario').value,
+                    cargo_destinatario: document.getElementById('of-cargo').value }),
+        };
+        const oficio = await api('POST', '/oficios/generar', body);
+        document.getElementById('numero-generado').textContent = oficio.numero_oficio;
+        document.getElementById('numero-preview').classList.remove('hidden');
+        const label = tipo === 'opinion' ? 'Opinión Técnica' : 'Oficio';
+        toast(`${label} ${oficio.numero_oficio} generado`, 'success');
+        document.getElementById('nuevo-oficio-form').reset();
+        document.getElementById('justificacion-group').style.display = 'none';
+        applyTipoToggle(currentTipo);
+        document.getElementById('of-fecha').value = new Date().toISOString().slice(0, 10);
+    } catch (ex) {
+        errEl.textContent = ex.message;
+        errEl.classList.remove('hidden');
+    } finally {
+        text.classList.remove('hidden');
+        spinner.classList.add('hidden');
+        btn.disabled = false;
+    }
+});
+
+// Toggle campos según tipo de documento
+function applyTipoToggle(tipo) {
+    const isOpinion = tipo === 'opinion';
+    document.getElementById('destinatario-group').style.display = isOpinion ? 'none' : '';
+    document.getElementById('cargo-group').style.display = isOpinion ? 'none' : '';
+    document.getElementById('url-solicitante-group').style.display = isOpinion ? '' : 'none';
+    document.getElementById('of-destinatario').required = !isOpinion;
+    document.getElementById('of-cargo').required = !isOpinion;
+    document.getElementById('of-url-solicitante').required = isOpinion;
+}
+// Justificación condicional
+document.getElementById('of-firmante').addEventListener('change', function () {
+    const firmante = state.firmantes.find(f => f.id == this.value);
+    const group = document.getElementById('justificacion-group');
+    const textarea = document.getElementById('of-justificacion');
+    if (firmante && !firmante.es_titular) {
+        group.style.display = '';
+        textarea.required = true;
+    } else {
+        group.style.display = 'none';
+        textarea.required = false;
+        textarea.value = '';
+    }
+});
+
+// Limpiar form nuevo oficio
+document.getElementById('btn-limpiar').addEventListener('click', () => {
+    document.getElementById('nuevo-oficio-form').reset();
+    document.getElementById('justificacion-group').style.display = 'none';
+    applyTipoToggle(currentTipo);
+    document.getElementById('numero-preview').classList.add('hidden');
+    document.getElementById('nuevo-error').classList.add('hidden');
+    document.getElementById('of-fecha').value = new Date().toISOString().slice(0, 10);
+});
+
+// Copiar número
+document.getElementById('btn-copy-numero').addEventListener('click', () => {
+    const num = document.getElementById('numero-generado').textContent;
+    if (navigator.clipboard) {
+        navigator.clipboard.writeText(num).then(() => toast('Número copiado', 'success'));
+    } else {
+        const ta = document.createElement('textarea');
+        ta.value = num;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        toast('Número copiado', 'success');
+    }
+});
+
+// Historial – filtrar
+function getHistorialFiltros() {
+    return {
+        q: document.getElementById('filter-q').value,
+        fecha_inicio: document.getElementById('filter-fecha-inicio').value,
+        fecha_fin: document.getElementById('filter-fecha-fin').value,
+        tipo: document.getElementById('filter-tipo').value,
+        estatus: document.getElementById('filter-estatus').value,
+    };
+}
+
+// Pestañas de tipo en historial
+document.querySelectorAll('.tipo-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+        document.querySelectorAll('.tipo-tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById('filter-tipo').value = tab.dataset.tipo;
+        loadHistorial(getHistorialFiltros());
+    });
+});
+
+document.getElementById('btn-filtrar').addEventListener('click', () => {
+    loadHistorial(getHistorialFiltros());
+});
+document.getElementById('filter-q').addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('btn-filtrar').click();
+});
+document.getElementById('btn-limpiar-filtros').addEventListener('click', () => {
+    ['filter-q', 'filter-fecha-inicio', 'filter-fecha-fin', 'filter-tipo', 'filter-estatus'].forEach(id => {
+        document.getElementById(id).value = '';
+    });
+    document.querySelectorAll('.tipo-tab').forEach(t => t.classList.remove('active'));
+    document.querySelector('.tipo-tab[data-tipo=""]').classList.add('active');
+    loadHistorial();
+});
+
+// Exportar
+document.getElementById('btn-export-excel').addEventListener('click', () => {
+    fetchDownload(`/api/exportar/excel?${new URLSearchParams(getHistorialFiltros())}`, 'Documentos_DEAJ.xlsx');
+});
+document.getElementById('btn-export-pdf').addEventListener('click', () => {
+    fetchDownload(`/api/exportar/pdf?${new URLSearchParams(getHistorialFiltros())}`, 'Documentos_DEAJ.pdf');
+});
+
+// Botones "Nuevo" de catálogos
+document.getElementById('btn-nuevo-firmante').addEventListener('click', () => openFirmanteModal());
+document.getElementById('btn-nuevo-anio').addEventListener('click', () => openAnioModal());
+document.getElementById('btn-nuevo-usuario').addEventListener('click', () => openUsuarioModal());
+
+// Cerrar modales
+document.getElementById('modal-close').addEventListener('click', () => closeModal('modal-generic'));
+document.getElementById('modal-oficio-close').addEventListener('click', () => closeModal('modal-oficio'));
+document.getElementById('modal-generic').addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeModal('modal-generic');
+});
+document.getElementById('modal-oficio').addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeModal('modal-oficio');
+});
+
+// =====================================================
+// Inicialización
+// =====================================================
+async function initApp() {
+    if (!state.token) {
+        document.getElementById('login-page').classList.remove('hidden');
+        document.getElementById('app').classList.add('hidden');
+        return;
+    }
+
+    try {
+        const res = await fetch('/api/auth/me', { headers: { Authorization: `Bearer ${state.token}` } });
+        if (!res.ok) { logout(); return; }
+        const json = await res.json();
+        state.user = json.user;
+    } catch {
+        logout();
+        return;
+    }
+
+    // Secciones solo para admin
+    const isAdmin = state.user.rol === 'admin';
+    document.querySelectorAll('.admin-only').forEach(el => {
+        el.style.display = isAdmin ? '' : 'none';
+    });
+
+    // Info de usuario en sidebar
+    document.getElementById('user-avatar').textContent = state.user.nombre[0].toUpperCase();
+    document.getElementById('user-name').textContent = state.user.nombre;
+    document.getElementById('user-role').textContent = isAdmin ? 'Administrador' : 'Usuario';
+
+    document.getElementById('login-page').classList.add('hidden');
+    document.getElementById('app').classList.remove('hidden');
+
+    showView('dashboard');
+}
+
+initApp();

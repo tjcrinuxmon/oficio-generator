@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sistema de Oficios — INE/DEAJ</title>
+  <meta name="description" content="Sistema institucional para la generación y gestión de números de oficio INE/DEAJ" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+    rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+  <link rel="icon" type="image/png" href="https://ine.mx/wp-content/uploads/2023/01/logo-ine.png" />
+</head>
+
+<body>
+  <!-- LOGIN -->
+  <div id="login-page" class="login-page">
+    <div class="login-card">
+      <div class="login-logo">
+        <img class="login-logo-img" src="https://ine.mx/wp-content/uploads/2023/01/logo-ine.png"
+          alt="INE — Instituto Nacional Electoral" />
+        <div class="login-logo-text">
+          <span class="login-dept">Dirección Ejecutiva de Asuntos Jurídicos</span>
+        </div>
+      </div>
+      <h1 class="login-title">Sistema de Oficios</h1>
+      <p class="login-subtitle">Acceso institucional requerido</p>
+      <form id="login-form" class="login-form">
+        <div class="form-group">
+          <label for="login-email">Correo electrónico</label>
+          <input type="email" id="login-email" placeholder="usuario@deaj.ine.mx" required autocomplete="email" />
+        </div>
+        <div class="form-group">
+          <label for="login-password">Contraseña</label>
+          <div class="input-password-wrap">
+            <input type="password" id="login-password" placeholder="••••••••" required autocomplete="current-password" />
+            <button type="button" class="btn-toggle-password" id="btn-toggle-password" title="Mostrar contraseña" tabindex="-1">
+              <svg id="icon-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              <svg id="icon-eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+            </button>
+          </div>
+        </div>
+        <div id="login-error" class="form-error hidden"></div>
+        <button type="submit" id="login-btn" class="btn btn-primary btn-full">
+          <span class="btn-text">Iniciar sesión</span>
+          <span class="btn-spinner hidden"></span>
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- APP -->
+  <div id="app" class="app hidden">
+    <!-- Sidebar -->
+    <aside id="sidebar" class="sidebar">
+      <div class="sidebar-header">
+        <div class="sidebar-logo">
+          <div class="logo-badge-sm">
+            <div class="diamond"></div>
+          </div>
+          <div>
+            <div class="sidebar-org">INE · DEAJ</div>
+            <div class="sidebar-sys">Sistema de Oficios</div>
+          </div>
+        </div>
+        <button id="sidebar-toggle" class="sidebar-toggle" title="Colapsar menú">&#9776;</button>
+      </div>
+      <nav class="sidebar-nav">
+        <a href="#" class="nav-item active" data-view="dashboard" id="nav-dashboard">
+          <span class="nav-icon">📊</span><span class="nav-label">Dashboard</span>
+        </a>
+        <a href="#" class="nav-item" data-view="selector" id="nav-selector">
+          <span class="nav-icon">✉️</span><span class="nav-label">Nuevo Documento</span>
+        </a>
+        <a href="#" class="nav-item" data-view="historial" id="nav-historial">
+          <span class="nav-icon">📋</span><span class="nav-label">Historial</span>
+        </a>
+        <div class="nav-separator"></div>
+        <a href="#" class="nav-item admin-only" data-view="firmantes" id="nav-firmantes">
+          <span class="nav-icon">✍️</span><span class="nav-label">Firmantes</span>
+        </a>
+        <a href="#" class="nav-item admin-only" data-view="anios" id="nav-anios">
+          <span class="nav-icon">📅</span><span class="nav-label">Años</span>
+        </a>
+        <a href="#" class="nav-item admin-only" data-view="usuarios" id="nav-usuarios">
+          <span class="nav-icon">👥</span><span class="nav-label">Usuarios</span>
+        </a>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="user-info">
+          <div class="user-avatar" id="user-avatar">A</div>
+          <div class="user-details">
+            <div class="user-name" id="user-name">Usuario</div>
+            <div class="user-role" id="user-role">Rol</div>
+          </div>
+        </div>
+        <button id="logout-btn" class="btn-logout" title="Cerrar sesión">⏏</button>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main id="main-content" class="main-content">
+      <!-- DASHBOARD -->
+      <section id="view-dashboard" class="view active">
+
+        <!-- Welcome banner -->
+        <div class="dash-welcome">
+          <div>
+            <div class="dash-welcome-title">Te damos la bienvenida</div>
+            <div class="dash-welcome-user" id="dash-user-name"></div>
+          </div>
+          <span id="anio-activo-badge" class="badge-anio"></span>
+        </div>
+
+        <!-- Paneles por tipo -->
+        <div class="dash-tipo-grid">
+
+          <!-- Oficios -->
+          <div class="dash-tipo-panel">
+            <div class="dash-tipo-header dash-tipo-header-oficio">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><line x1="8" y1="8" x2="16" y2="8"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="8" y1="16" x2="13" y2="16"/></svg>
+              <span class="dash-tipo-nombre">Oficios</span>
+              <span class="dash-tipo-total" id="of-total">—</span>
+            </div>
+            <div class="dash-mini-stats">
+              <div class="mini-stat">
+                <span class="mini-stat-value" id="of-borrador">—</span>
+                <span class="mini-stat-label">Borrador</span>
+              </div>
+              <div class="mini-stat">
+                <span class="mini-stat-value mini-stat-enviado" id="of-enviado">—</span>
+                <span class="mini-stat-label">Enviados</span>
+              </div>
+              <div class="mini-stat">
+                <span class="mini-stat-value mini-stat-archivado" id="of-archivado">—</span>
+                <span class="mini-stat-label">Archivados</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Opiniones Técnicas -->
+          <div class="dash-tipo-panel">
+            <div class="dash-tipo-header dash-tipo-header-opinion">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><circle cx="11" cy="14" r="2"/><path d="M13.7 16.3 L16 18.6"/></svg>
+              <span class="dash-tipo-nombre">Opiniones Técnicas</span>
+              <span class="dash-tipo-total dash-tipo-total-opinion" id="ot-total">—</span>
+            </div>
+            <div class="dash-mini-stats">
+              <div class="mini-stat">
+                <span class="mini-stat-value" id="ot-borrador">—</span>
+                <span class="mini-stat-label">Borrador</span>
+              </div>
+              <div class="mini-stat">
+                <span class="mini-stat-value mini-stat-enviado" id="ot-enviado">—</span>
+                <span class="mini-stat-label">Enviados</span>
+              </div>
+              <div class="mini-stat">
+                <span class="mini-stat-value mini-stat-archivado" id="ot-archivado">—</span>
+                <span class="mini-stat-label">Archivados</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Action info cards -->
+        <div class="dash-info-section">
+          <h2 class="dash-info-title">¿Qué puedes realizar en el sistema?</h2>
+          <p class="dash-info-sub">Utiliza el menú lateral para acceder a cada función disponible.</p>
+          <div class="dash-actions-grid">
+            <div class="dash-action-card">
+              <div class="dash-action-icon">
+                <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="10" y="6" width="28" height="36" rx="3"/><line x1="24" y1="16" x2="24" y2="32"/><line x1="16" y1="24" x2="32" y2="24"/><line x1="16" y1="34" x2="28" y2="34"/></svg>
+              </div>
+              <div class="dash-action-title">Capturar información</div>
+              <div class="dash-action-desc">Registrar los datos necesarios para generar un nuevo oficio.</div>
+            </div>
+            <div class="dash-action-card">
+              <div class="dash-action-icon">
+                <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="14" width="32" height="22" rx="3"/><polyline points="8,14 24,26 40,14"/><path d="M30 8 L40 14"/><path d="M18 8 L8 14"/></svg>
+              </div>
+              <div class="dash-action-title">Enviar y gestionar</div>
+              <div class="dash-action-desc">Cambiar el estatus del oficio y registrar su envío o recepción.</div>
+            </div>
+            <div class="dash-action-card">
+              <div class="dash-action-icon">
+                <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="8" width="36" height="28" rx="3"/><line x1="6" y1="36" x2="42" y2="36"/><polyline points="14,30 20,22 26,26 34,16"/><line x1="16" y1="42" x2="32" y2="42"/><line x1="24" y1="36" x2="24" y2="42"/></svg>
+              </div>
+              <div class="dash-action-title">Consultar historial</div>
+              <div class="dash-action-desc">Buscar, filtrar y dar seguimiento a todos los oficios registrados.</div>
+            </div>
+            <div class="dash-action-card">
+              <div class="dash-action-icon">
+                <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="10" y="4" width="28" height="36" rx="3"/><line x1="16" y1="14" x2="32" y2="14"/><line x1="16" y1="20" x2="32" y2="20"/><line x1="16" y1="26" x2="24" y2="26"/><circle cx="30" cy="34" r="6"/><path d="M34.2 38.2 L38 42"/></svg>
+              </div>
+              <div class="dash-action-title">Exportar documentos</div>
+              <div class="dash-action-desc">Descargar los oficios en formato Word o PDF para su distribución.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Recientes separados por tipo -->
+        <div class="dash-recientes-grid">
+          <div>
+            <div class="section-title">Últimos oficios</div>
+            <div id="dash-recientes-oficio" class="recientes-list"></div>
+          </div>
+          <div>
+            <div class="section-title">Últimas opiniones técnicas</div>
+            <div id="dash-recientes-opinion" class="recientes-list"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- SELECTOR DE TIPO -->
+      <section id="view-selector" class="view">
+        <div class="view-header">
+          <h1>Nuevo Documento</h1>
+        </div>
+        <p class="selector-subtitle">Selecciona el tipo de documento que deseas generar:</p>
+        <div class="selector-grid">
+          <div class="selector-card selector-card-oficio" onclick="selectTipo('oficio')">
+            <div class="selector-card-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="13" y2="16"/></svg>
+            </div>
+            <div class="selector-card-title">Oficio</div>
+            <div class="selector-card-nomenclatura">INE/DEAJ/###/año</div>
+            <div class="selector-card-desc">Comunicación oficial dirigida a un destinatario específico con número de folio único.</div>
+            <button class="btn btn-primary selector-card-btn" type="button">Generar Oficio</button>
+          </div>
+          <div class="selector-card selector-card-opinion" onclick="selectTipo('opinion')">
+            <div class="selector-card-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><circle cx="11" cy="14" r="2"/><path d="M13.7 16.3 L16 18.6"/></svg>
+            </div>
+            <div class="selector-card-title">Opinión Técnica</div>
+            <div class="selector-card-nomenclatura">INE/DEAJ/OTJ/###/año</div>
+            <div class="selector-card-desc">Documento de análisis jurídico en respuesta a una consulta o solicitud formal.</div>
+            <button class="btn btn-primary selector-card-btn selector-btn-opinion" type="button">Generar Opinión Técnica</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- FORMULARIO DE GENERACIÓN -->
+      <section id="view-nuevo" class="view">
+        <div class="view-header">
+          <div>
+            <a href="#" class="btn-back-selector" onclick="showView('selector'); return false;">← Cambiar tipo de documento</a>
+            <h1 id="form-title">Nuevo Oficio</h1>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+            <span id="form-tipo-badge" class="tipo-badge tipo-oficio" style="font-size:13px;padding:5px 14px">Oficio</span>
+            <div id="numero-preview" class="numero-preview hidden">
+              <span class="numero-label">Número generado:</span>
+              <span class="numero-value" id="numero-generado"></span>
+              <button class="btn-copy" id="btn-copy-numero" title="Copiar">📋</button>
+            </div>
+          </div>
+        </div>
+        <form id="nuevo-oficio-form" class="oficio-form card">
+          <div class="form-grid">
+            <div class="form-group">
+              <label for="of-fecha">Fecha <span class="required">*</span></label>
+              <input type="date" id="of-fecha" required />
+            </div>
+            <div class="form-group col-2" id="destinatario-group">
+              <label for="of-destinatario">Destinatario <span class="required">*</span></label>
+              <input type="text" id="of-destinatario" placeholder="Nombre completo del destinatario" required />
+            </div>
+            <div class="form-group col-2" id="cargo-group">
+              <label for="of-cargo">Cargo del Destinatario <span class="required">*</span></label>
+              <input type="text" id="of-cargo" placeholder="Cargo o puesto" required />
+            </div>
+            <div class="form-group col-full" id="url-solicitante-group" style="display:none">
+              <label for="of-url-solicitante">UR (Unidad Requirente) <span class="required">*</span></label>
+              <select id="of-url-solicitante">
+                <option value="" disabled selected>— Selecciona la UR que solicita la opinión —</option>
+                <option>Dirección Ejecutiva del Registro Federal de Electores (DERFE)</option>
+                <option>Dirección Ejecutiva de Prerrogativas y Partidos Políticos (DEPPP)</option>
+                <option>Dirección Ejecutiva de Organización Electoral (DEOE)</option>
+                <option>Dirección Ejecutiva del Servicio Profesional Electoral Nacional (DESPEN)</option>
+                <option>Dirección Ejecutiva de Capacitación Electoral y Educación Cívica (DECEyEC)</option>
+                <option>Dirección Ejecutiva de Administración (DEA)</option>
+                <option>Dirección Ejecutiva de Asuntos Jurídicos (DEAJ)</option>
+                <option>Presidencia del Consejo General</option>
+                <option>Secretaría Ejecutiva</option>
+                <option>Coordinación Nacional de Comunicación Social (CNCS)</option>
+                <option>Coordinación de Asuntos Internacionales (CAI)</option>
+                <option>Unidad Técnica de Servicios de Informática (UTSI)</option>
+                <option>Dirección del Secretariado</option>
+                <option>Unidad Técnica de Igualdad de Género y No Discriminación (UTIGyND)</option>
+                <option>Unidad Técnica de lo Contencioso Electoral (UTCE)</option>
+                <option>Unidad Técnica de Vinculación con los Organismos Públicos Locales (UTVOPL)</option>
+                <option>Unidad Técnica de Fiscalización (UTF)</option>
+                <option>Unidad Técnica de Transparencia y Protección de Datos Personales (UTTyPDP)</option>
+              </select>
+            </div>
+            <div class="form-group col-full">
+              <label for="of-asunto">Asunto <span class="required">*</span></label>
+              <textarea id="of-asunto" rows="3" placeholder="Describe el asunto" required></textarea>
+            </div>
+            <div class="form-group col-2">
+              <label for="of-firmante">Firmante <span class="required">*</span></label>
+              <select id="of-firmante" required>
+                <option value="">— Seleccionar firmante —</option>
+              </select>
+            </div>
+            <div class="form-group col-2" id="justificacion-group" style="display:none">
+              <label for="of-justificacion" class="label-warning">
+                ⚠️ Justificación (obligatorio) <span class="required">*</span>
+                <small>¿Por qué no firma Anahí Silva Tosca (titular)?</small>
+              </label>
+              <textarea id="of-justificacion" rows="2"
+                placeholder="Indique la razón por la que el titular no firma este oficio"></textarea>
+            </div>
+            <div class="form-group col-2">
+              <label for="of-solicita">Solicita <span class="required">*</span></label>
+              <input type="text" id="of-solicita" placeholder="Nombre completo de quien solicita" required />
+            </div>
+            <div class="form-group col-2">
+              <label for="of-area">Área <span class="required">*</span></label>
+              <select id="of-area" required>
+                <option value="" disabled selected>Selecciona un área</option>
+                <option>Dirección Ejecutiva de Asuntos Jurídicos</option>
+                <option>Dirección de Asuntos HASL</option>
+                <option>Dirección de Asuntos Laborales</option>
+                <option>Dirección de Contratos y Convenios</option>
+                <option>Dirección de Instrucción Recursal</option>
+                <option>Dirección de Normatividad y Consulta</option>
+                <option>Dirección de Servicios Legales</option>
+                <option>Coordinación Administrativa</option>
+                <option>Coordinacion de Análisis de Información y Control Documental</option>
+              </select>
+            </div>
+          </div>
+          <div id="nuevo-error" class="form-error hidden"></div>
+          <div class="form-actions">
+            <button type="button" class="btn btn-secondary" id="btn-limpiar">Limpiar</button>
+            <button type="submit" class="btn btn-primary" id="btn-generar">
+              <span class="btn-text">✉️ Generar Oficio</span>
+              <span class="btn-spinner hidden"></span>
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <!-- HISTORIAL -->
+      <section id="view-historial" class="view">
+        <div class="view-header">
+          <h1>Historial de Documentos</h1>
+          <div class="header-actions">
+            <button class="btn btn-secondary btn-sm" id="btn-export-excel">⬇ Excel</button>
+            <button class="btn btn-secondary btn-sm" id="btn-export-pdf">⬇ PDF</button>
+          </div>
+        </div>
+        <div class="tipo-tabs">
+          <button class="tipo-tab active" data-tipo="">Todos</button>
+          <button class="tipo-tab" data-tipo="oficio">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V6z"/><polyline points="9 2 9 6 13 6"/><line x1="5" y1="9" x2="11" y2="9"/><line x1="5" y1="11" x2="8" y2="11"/></svg>
+            Oficios
+          </button>
+          <button class="tipo-tab" data-tipo="opinion">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V6z"/><polyline points="9 2 9 6 13 6"/><circle cx="7" cy="10" r="1.3"/><path d="M8.8 11.8 L10.5 13.5"/></svg>
+            Opiniones Técnicas
+          </button>
+        </div>
+        <div class="filters-bar card">
+          <input type="text" id="filter-q" placeholder="🔍 Buscar por número, destinatario, asunto..."
+            class="filter-search" />
+          <input type="date" id="filter-fecha-inicio" class="filter-date" title="Desde" />
+          <input type="date" id="filter-fecha-fin" class="filter-date" title="Hasta" />
+          <input type="hidden" id="filter-tipo" value="" />
+          <select id="filter-estatus" class="filter-select">
+            <option value="">Todos los estatus</option>
+            <option value="borrador">Borrador</option>
+            <option value="enviado">Enviado</option>
+
+            <option value="archivado">Archivado</option>
+            <option value="cancelado">Cancelado</option>
+          </select>
+          <button class="btn btn-primary btn-sm" id="btn-filtrar">Filtrar</button>
+          <button class="btn btn-ghost btn-sm" id="btn-limpiar-filtros">Limpiar</button>
+        </div>
+        <div class="table-wrapper card">
+          <table class="data-table" id="historial-table">
+            <thead>
+              <tr>
+                <th>Número / Folio</th>
+                <th>Fecha</th>
+                <th>Destinatario</th>
+                <th>Asunto</th>
+                <th>Firmante</th>
+                <th>Área</th>
+                <th>Estatus</th>
+                <th>Acuse</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="historial-tbody"></tbody>
+          </table>
+          <div id="historial-empty" class="table-empty hidden">No se encontraron documentos</div>
+        </div>
+      </section>
+
+      <!-- FIRMANTES -->
+      <section id="view-firmantes" class="view admin-only">
+        <div class="view-header">
+          <h1>Catálogo de Firmantes</h1>
+          <button class="btn btn-primary" id="btn-nuevo-firmante">+ Nuevo Firmante</button>
+        </div>
+        <div class="table-wrapper card">
+          <table class="data-table" id="firmantes-table">
+            <thead>
+              <tr>
+                <th>Nombre</th>
+                <th>Cargo</th>
+                <th>Titular</th>
+                <th>Estado</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="firmantes-tbody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- AÑOS -->
+      <section id="view-anios" class="view admin-only">
+        <div class="view-header">
+          <h1>Catálogo de Años</h1>
+          <button class="btn btn-primary" id="btn-nuevo-anio">+ Nuevo Año</button>
+        </div>
+        <div class="table-wrapper card">
+          <table class="data-table" id="anios-table">
+            <thead>
+              <tr>
+                <th>Año</th>
+                <th>Correlativo Inicial</th>
+                <th>Correlativo Actual</th>
+                <th>Último Oficio</th>
+                <th>Estado</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="anios-tbody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- USUARIOS -->
+      <section id="view-usuarios" class="view admin-only">
+        <div class="view-header">
+          <h1>Gestión de Usuarios</h1>
+          <button class="btn btn-primary" id="btn-nuevo-usuario">+ Nuevo Usuario</button>
+        </div>
+        <div class="table-wrapper card">
+          <table class="data-table" id="usuarios-table">
+            <thead>
+              <tr>
+                <th>Nombre</th>
+                <th>Email</th>
+                <th>Rol</th>
+                <th>Estado</th>
+                <th>Registrado</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="usuarios-tbody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <footer class="app-footer">
+        <div class="app-footer-inner">
+          <div class="app-footer-brand">
+            <img src="https://ine.mx/wp-content/uploads/2023/01/logo-ine.png" alt="INE" class="app-footer-logo" />
+            <span>Instituto Nacional Electoral</span>
+          </div>
+          <span class="app-footer-copy">&copy; Derechos Reservados | Instituto Nacional Electoral 2026 | M&eacute;xico</span>
+        </div>
+      </footer>
+    </main>
+  </div>
+
+  <!-- MODAL DETALLE/EDITAR OFICIO -->
+  <div id="modal-oficio" class="modal-overlay hidden">
+    <div class="modal-box modal-lg">
+      <div class="modal-header">
+        <h2 id="modal-oficio-titulo">Detalle del Oficio</h2>
+        <button class="modal-close" id="modal-oficio-close">✕</button>
+      </div>
+      <div class="modal-body" id="modal-oficio-body"></div>
+    </div>
+  </div>
+
+  <!-- MODAL GENÉRICO -->
+  <div id="modal-generic" class="modal-overlay hidden">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h2 id="modal-title">Modal</h2>
+        <button class="modal-close" id="modal-close">✕</button>
+      </div>
+      <div class="modal-body" id="modal-body"></div>
+      <div class="modal-footer" id="modal-footer"></div>
+    </div>
+  </div>
+
+  <!-- TOAST -->
+  <div id="toast-container"></div>
+
+  <script src="app.js"></script>
+</body>
+
+</html>
