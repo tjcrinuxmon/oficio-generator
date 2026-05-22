@@ -36,7 +36,9 @@ function rowsToObjects(result) {
 
 function buildOficioNumero(correlativo, anio, tipo) {
   const num = String(correlativo).padStart(3, '0');
-  if (tipo === 'opinion') return `INE/DEAJ/OTJ/${num}/${anio}`;
+  if (tipo === 'opinion')  return `INE/DEAJ/OTJ/${num}/${anio}`;
+  if (tipo === 'dictamen')      return `INE/DEAJ/DTJ/${num}/${anio}`;
+  if (tipo === 'certificacion') return `DEAJ-${num}-${anio}`;
   return `INE/DEAJ/${num}/${anio}`;
 }
 
@@ -51,8 +53,10 @@ router.get('/', (req, res) => {
   if (firmante_id) where.push(`o.firmante_id = ${parseInt(firmante_id)}`);
   if (fecha_inicio) where.push(`o.fecha >= '${fecha_inicio}'`);
   if (fecha_fin) where.push(`o.fecha <= '${fecha_fin}'`);
-  if (tipo === 'oficio') where.push(`(o.tipo = 'oficio' OR o.tipo IS NULL)`);
-  if (tipo === 'opinion') where.push(`o.tipo = 'opinion'`);
+  if (tipo === 'oficio')   where.push(`(o.tipo = 'oficio' OR o.tipo IS NULL)`);
+  if (tipo === 'opinion')  where.push(`o.tipo = 'opinion'`);
+  if (tipo === 'dictamen')       where.push(`o.tipo = 'dictamen'`);
+  if (tipo === 'certificacion')  where.push(`o.tipo = 'certificacion'`);
   if (q) {
     const sq = q.replace(/'/g, "''");
     where.push(`(o.numero_oficio LIKE '%${sq}%' OR o.destinatario LIKE '%${sq}%' OR o.asunto LIKE '%${sq}%' OR o.solicita LIKE '%${sq}%')`);
@@ -90,12 +94,15 @@ router.get('/:id', (req, res) => {
 // POST /api/oficios/generar — ATÓMICO
 router.post('/generar', (req, res) => {
   const { fecha, destinatario, cargo_destinatario, asunto, firmante_id, justificacion_firmante, razon, solicita, area, url_solicitante } = req.body;
-  const tipo = ['oficio', 'opinion'].includes(req.body.tipo) ? req.body.tipo : 'oficio';
-  const isOpinion = tipo === 'opinion';
+  const tipo             = ['oficio', 'opinion', 'dictamen', 'certificacion'].includes(req.body.tipo) ? req.body.tipo : 'oficio';
+  const isOpinion        = tipo === 'opinion';
+  const isDictamen       = tipo === 'dictamen';
+  const isCertificacion  = tipo === 'certificacion';
 
-  const missingBase = !fecha || !asunto || !firmante_id || !solicita || !area;
-  const missingOficio = !isOpinion && (!destinatario || !cargo_destinatario);
-  if (missingBase || missingOficio) {
+  const missingBase    = !fecha || !asunto || !firmante_id || !solicita || !area;
+  const missingOficio  = !isOpinion && !isDictamen && (!destinatario || !cargo_destinatario);
+  const missingReq     = (isOpinion || isDictamen) && !url_solicitante;
+  if (missingBase || missingOficio || missingReq) {
     return res.status(400).json({ error: 'Todos los campos obligatorios son requeridos' });
   }
 
@@ -112,17 +119,27 @@ router.post('/generar', (req, res) => {
   }
 
   // Año activo
-  const anioResult = db.exec(`SELECT id, anio, correlativo_actual, correlativo_opinion_actual FROM anios_config WHERE activo = 1 LIMIT 1`);
+  const anioResult = db.exec(`SELECT id, anio, correlativo_actual, correlativo_opinion_actual, correlativo_dictamen_actual, correlativo_certificacion_actual FROM anios_config WHERE activo = 1 LIMIT 1`);
   if (!anioResult.length || !anioResult[0].values.length) return res.status(500).json({ error: 'No hay año activo configurado' });
-  const [anioId, anio, correlativoActual, correlativoOpinionActual] = anioResult[0].values[0];
+  const [anioId, anio, correlativoActual, correlativoOpinionActual, correlativoDictamenActual, correlativoCertificacionActual] = anioResult[0].values[0];
 
   // OPERACIÓN ATÓMICA: sql.js es síncrono, un solo hilo JS
-  const nuevoCorrelativo = (isOpinion ? (correlativoOpinionActual || 0) : correlativoActual) + 1;
+  const nuevoCorrelativo = isDictamen
+    ? (correlativoDictamenActual || 0) + 1
+    : isOpinion
+      ? (correlativoOpinionActual || 0) + 1
+      : isCertificacion
+        ? (correlativoCertificacionActual || 0) + 1
+        : correlativoActual + 1;
   const numeroOficio = buildOficioNumero(nuevoCorrelativo, anio, tipo);
 
   try {
-    if (isOpinion) {
+    if (isDictamen) {
+      db.run(`UPDATE anios_config SET correlativo_dictamen_actual = ${nuevoCorrelativo} WHERE id = ${anioId}`);
+    } else if (isOpinion) {
       db.run(`UPDATE anios_config SET correlativo_opinion_actual = ${nuevoCorrelativo} WHERE id = ${anioId}`);
+    } else if (isCertificacion) {
+      db.run(`UPDATE anios_config SET correlativo_certificacion_actual = ${nuevoCorrelativo} WHERE id = ${anioId}`);
     } else {
       db.run(`UPDATE anios_config SET correlativo_actual = ${nuevoCorrelativo} WHERE id = ${anioId}`);
     }
@@ -155,7 +172,7 @@ router.post('/generar', (req, res) => {
 
 // PUT /api/oficios/:id
 router.put('/:id', (req, res) => {
-  const { estatus, fecha, destinatario, cargo_destinatario, asunto, firmante_id, justificacion_firmante, razon, solicita, area, url_solicitante } = req.body;
+  const { estatus, fecha, destinatario, cargo_destinatario, asunto, firmante_id, justificacion_firmante, razon, solicita, area, url_solicitante, razon_reactivacion } = req.body;
   const db = getDb();
   const ownerClause = req.user.rol !== 'admin' ? `AND creado_por = ${req.user.id}` : '';
   const existing = db.exec(`SELECT id FROM oficios WHERE id = ${req.params.id} ${ownerClause}`);
@@ -181,6 +198,7 @@ router.put('/:id', (req, res) => {
   if (solicita) updates.push(`solicita = '${solicita.replace(/'/g, "''")}'`);
   if (area) updates.push(`area = '${area.replace(/'/g, "''")}'`);
   if (url_solicitante !== undefined) updates.push(`url_solicitante = '${(url_solicitante||'').replace(/'/g, "''")}'`);
+  if (razon_reactivacion !== undefined) updates.push(`razon_reactivacion = '${(razon_reactivacion||'').replace(/'/g, "''")}'`);
   updates.push(`actualizado_en = datetime('now','localtime')`);
 
   if (updates.length > 1) {

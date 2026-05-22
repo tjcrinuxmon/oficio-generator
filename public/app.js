@@ -4,7 +4,10 @@
 
 // ── Tipo activo de documento ───────────────────────
 let currentTipo = 'oficio';
-let currentModalAcuse = null; // acuse_path del documento abierto en el modal
+let currentModalAcuse = null;
+let currentModalOriginalEstatus = null;
+let historialPage = 1;
+let historialPageSize = 10;
 
 // ── Catálogos compartidos ───────────────────────────
 const AREAS = [
@@ -86,6 +89,28 @@ function formatFecha(f) {
     if (!f) return '—';
     const d = new Date(f.includes('T') ? f : f + 'T12:00:00');
     return d.toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit', year: '2-digit' });
+}
+
+function setupCharCounter(inputId, max) {
+    const el = document.getElementById(inputId);
+    if (!el) return;
+    const counterId = inputId + '-counter';
+    let counter = document.getElementById(counterId);
+    if (!counter) {
+        counter = document.createElement('div');
+        counter.id = counterId;
+        counter.className = 'char-counter';
+        el.insertAdjacentElement('afterend', counter);
+    }
+    const update = () => {
+        const len = el.value.length;
+        counter.textContent = `${len} / ${max} caracteres`;
+        counter.className = 'char-counter';
+        if (len >= max)              counter.classList.add('error');
+        else if (len >= max * 0.85) counter.classList.add('warn');
+    };
+    el.addEventListener('input', update);
+    update();
 }
 
 function labelEstatus(e) {
@@ -195,6 +220,8 @@ async function loadDashboard() {
 
         const ofs = oficios.filter(o => (o.tipo || 'oficio') === 'oficio');
         const ots = oficios.filter(o => o.tipo === 'opinion');
+        const dts  = oficios.filter(o => o.tipo === 'dictamen');
+        const cts  = oficios.filter(o => o.tipo === 'certificacion');
 
         // Stats oficios
         document.getElementById('of-total').textContent = ofs.length;
@@ -208,8 +235,22 @@ async function loadDashboard() {
         document.getElementById('ot-enviado').textContent = ots.filter(o => o.estatus === 'enviado').length;
         document.getElementById('ot-archivado').textContent = ots.filter(o => o.estatus === 'archivado').length;
 
+        // Stats dictámenes
+        document.getElementById('dt-total').textContent = dts.length;
+        document.getElementById('dt-borrador').textContent = dts.filter(o => o.estatus === 'borrador').length;
+        document.getElementById('dt-enviado').textContent = dts.filter(o => o.estatus === 'enviado').length;
+        document.getElementById('dt-archivado').textContent = dts.filter(o => o.estatus === 'archivado').length;
+
+        // Stats certificaciones
+        document.getElementById('ct-total').textContent = cts.length;
+        document.getElementById('ct-borrador').textContent = cts.filter(o => o.estatus === 'borrador').length;
+        document.getElementById('ct-enviado').textContent = cts.filter(o => o.estatus === 'enviado').length;
+        document.getElementById('ct-archivado').textContent = cts.filter(o => o.estatus === 'archivado').length;
+
         renderRecientes('dash-recientes-oficio', ofs.slice(0, 5), 'No hay oficios registrados aún.');
         renderRecientes('dash-recientes-opinion', ots.slice(0, 5), 'No hay opiniones técnicas registradas aún.');
+        renderRecientes('dash-recientes-dictamen', dts.slice(0, 5), 'No hay dictámenes registrados aún.');
+        renderRecientes('dash-recientes-certificacion', cts.slice(0, 5), 'No hay certificaciones registradas aún.');
     } catch (e) {
         toast(e.message, 'error');
     }
@@ -238,17 +279,21 @@ function renderHistorialTable(oficios) {
     if (!oficios.length) {
         tbody.innerHTML = '';
         empty.classList.remove('hidden');
+        renderPagination(0);
         return;
     }
     empty.classList.add('hidden');
 
-    // Columna central dinámica según tipo
-    const isOficio  = tipo === 'oficio';
-    const isOpinion = tipo === 'opinion';
+    const isOficio        = tipo === 'oficio';
+    const isOpinion       = tipo === 'opinion';
+    const isDictamen      = tipo === 'dictamen';
+    const isCertificacion = tipo === 'certificacion';
 
-    const colHeader = isOficio  ? '<th>Destinatario</th>'
-                    : isOpinion ? '<th>UR Solicitante</th>'
-                    :             '<th>Tipo</th>';
+    const colHeader = isOficio        ? '<th>Destinatario</th>'
+                    : isOpinion       ? '<th>Requirente</th>'
+                    : isDictamen      ? '<th>Requirente</th>'
+                    : isCertificacion ? '<th>Destinatario</th>'
+                    :                   '<th>Tipo</th>';
 
     thead.innerHTML = `
         <th>Número / Folio</th>
@@ -261,12 +306,25 @@ function renderHistorialTable(oficios) {
         <th>Acuse</th>
         <th>Acciones</th>`;
 
-    tbody.innerHTML = oficios.map(o => {
-        const colCell = isOficio  ? `<td class="td-truncate" title="${o.destinatario || ''}">${o.destinatario || '—'}</td>`
-                      : isOpinion ? `<td class="td-truncate" title="${o.url_solicitante || ''}">${o.url_solicitante || '—'}</td>`
-                      : `<td>${o.tipo === 'opinion'
-                            ? '<span class="tipo-badge tipo-opinion">Opinión</span>'
-                            : '<span class="tipo-badge tipo-oficio">Oficio</span>'}</td>`;
+    // Paginación
+    const total   = oficios.length;
+    const start   = (historialPage - 1) * historialPageSize;
+    const pagData = oficios.slice(start, start + historialPageSize);
+
+    const editIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`;
+
+    tbody.innerHTML = pagData.map(o => {
+        const TIPO_BADGES = {
+            oficio:        '<span class="tipo-badge tipo-oficio">Oficio</span>',
+            opinion:       '<span class="tipo-badge tipo-opinion">Opinión</span>',
+            dictamen:      '<span class="tipo-badge tipo-dictamen">Dictamen</span>',
+            certificacion: '<span class="tipo-badge tipo-certificacion">Certificación</span>',
+        };
+        const colCell = isOficio        ? `<td class="td-truncate" title="${o.destinatario || ''}">${o.destinatario || '—'}</td>`
+                      : isOpinion       ? `<td class="td-truncate" title="${o.url_solicitante || ''}">${o.url_solicitante || '—'}</td>`
+                      : isDictamen      ? `<td class="td-truncate" title="${o.url_solicitante || ''}">${o.url_solicitante || '—'}</td>`
+                      : isCertificacion ? `<td class="td-truncate" title="${o.destinatario || ''}">${o.destinatario || '—'}</td>`
+                      : `<td>${TIPO_BADGES[o.tipo] || TIPO_BADGES.oficio}</td>`;
         return `
     <tr>
       <td><span class="oficio-num">${o.numero_oficio}</span></td>
@@ -282,9 +340,7 @@ function renderHistorialTable(oficios) {
             : '<span class="acuse-no">—</span>'}
       </td>
       <td>
-        <div class="table-actions">
-          <button class="btn btn-secondary btn-sm btn-icon" title="Ver / editar" onclick="openOficioModal(${o.id})">👁</button>
-        </div>
+        <button class="btn-table-action" title="Ver / editar" onclick="openOficioModal(${o.id})">${editIcon}</button>
       </td>
     </tr>`;
     }).join('');
@@ -292,18 +348,62 @@ function renderHistorialTable(oficios) {
     tbody.querySelectorAll('.btn-acuse-si').forEach(el =>
         el.addEventListener('click', () => downloadAcuse(el.dataset.id))
     );
+
+    renderPagination(total);
+}
+
+function renderPagination(total) {
+    const container = document.getElementById('historial-pagination');
+    if (!container) return;
+    const totalPages = Math.ceil(total / historialPageSize);
+    if (totalPages <= 1) { container.innerHTML = ''; return; }
+
+    const pages = [];
+    // Siempre mostrar primera, última y páginas cercanas a la actual
+    for (let i = 1; i <= totalPages; i++) {
+        if (i === 1 || i === totalPages || (i >= historialPage - 1 && i <= historialPage + 1)) {
+            pages.push(i);
+        }
+    }
+    // Insertar elipsis
+    const withEllipsis = [];
+    let prev = null;
+    for (const p of pages) {
+        if (prev && p - prev > 1) withEllipsis.push('…');
+        withEllipsis.push(p);
+        prev = p;
+    }
+
+    const btn = (label, page, disabled = false, active = false) =>
+        `<button class="pagination-btn${active ? ' active' : ''}" data-page="${page}" ${disabled ? 'disabled' : ''}>${label}</button>`;
+
+    container.innerHTML =
+        btn('‹', historialPage - 1, historialPage === 1) +
+        withEllipsis.map(p => p === '…'
+            ? `<span class="pagination-ellipsis">…</span>`
+            : btn(p, p, false, p === historialPage)
+        ).join('') +
+        btn('›', historialPage + 1, historialPage === totalPages);
+
+    container.querySelectorAll('.pagination-btn:not([disabled])').forEach(b =>
+        b.addEventListener('click', () => {
+            historialPage = parseInt(b.dataset.page);
+            renderHistorialTable(state.oficios);
+        })
+    );
 }
 
 // ── Selector de tipo ─────────────────────────────────
 function selectTipo(tipo) {
     currentTipo = tipo;
-    const isOpinion = tipo === 'opinion';
-    document.getElementById('form-title').textContent = isOpinion ? 'Nueva Opinión Técnica' : 'Nuevo Oficio';
+    const titles    = { oficio: 'Nuevo Oficio', opinion: 'Nueva Opinión Técnica', dictamen: 'Nuevo Dictamen', certificacion: 'Nueva Certificación' };
+    const badges    = { oficio: 'Oficio', opinion: 'Opinión Técnica', dictamen: 'Dictamen', certificacion: 'Certificación' };
+    const btnLabels = { oficio: '✉️ Generar Oficio', opinion: '✉️ Generar Opinión Técnica', dictamen: '📋 Generar Dictamen', certificacion: '🏅 Generar Certificación' };
+    document.getElementById('form-title').textContent = titles[tipo] || 'Nuevo Oficio';
     const badge = document.getElementById('form-tipo-badge');
     badge.className = `tipo-badge tipo-${tipo}`;
-    badge.textContent = isOpinion ? 'Opinión Técnica' : 'Oficio';
-    document.querySelector('#btn-generar .btn-text').textContent =
-        isOpinion ? '✉️ Generar Opinión Técnica' : '✉️ Generar Oficio';
+    badge.textContent = badges[tipo] || 'Oficio';
+    document.querySelector('#btn-generar .btn-text').textContent = btnLabels[tipo] || '✉️ Generar Oficio';
     applyTipoToggle(tipo);
     showView('nuevo');
 }
@@ -336,7 +436,10 @@ async function openOficioModal(id) {
         ]);
         state.firmantes = firmantes;
 
-        const estatusOpts = ['borrador', 'enviado', 'archivado', 'cancelado']
+        const estatusDisponibles = o.acuse_path
+            ? ['enviado', 'archivado', 'cancelado']
+            : ['borrador', 'enviado', 'archivado', 'cancelado'];
+        const estatusOpts = estatusDisponibles
             .map(e => `<option value="${e}" ${o.estatus === e ? 'selected' : ''}>${labelEstatus(e)}</option>`)
             .join('');
 
@@ -345,8 +448,12 @@ async function openOficioModal(id) {
             .join('');
 
         currentModalAcuse = o.acuse_path || null;
-        const isAdmin = state.user.rol === 'admin';
-        const isOpinion = o.tipo === 'opinion';
+        currentModalOriginalEstatus = o.estatus;
+        const isAdmin         = state.user.rol === 'admin';
+        const isOpinion       = o.tipo === 'opinion';
+        const isDictamen      = o.tipo === 'dictamen';
+        const isCertificacion = o.tipo === 'certificacion';
+        const needsUR         = isOpinion || isDictamen;
         const q = s => (s || '').replace(/"/g, '&quot;');
         const areaOpts = AREAS.map(a => `<option value="${a}" ${o.area === a ? 'selected' : ''}>${a}</option>`).join('');
         const urOpts = URS.map(u => `<option value="${u}" ${o.url_solicitante === u ? 'selected' : ''}>${u}</option>`).join('');
@@ -356,8 +463,8 @@ async function openOficioModal(id) {
       <div class="detail-grid">
         <div class="detail-item full">
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
-            <span class="detail-label">${isOpinion ? 'Número de Opinión Técnica' : 'Número de Oficio'}</span>
-            ${isOpinion ? '<span class="tipo-badge tipo-opinion">Opinión Técnica</span>' : '<span class="tipo-badge tipo-oficio">Oficio</span>'}
+            <span class="detail-label">${isDictamen ? 'Número de Dictamen' : isCertificacion ? 'Número de Certificación' : isOpinion ? 'Número de Opinión Técnica' : 'Número de Oficio'}</span>
+            ${isDictamen ? '<span class="tipo-badge tipo-dictamen">Dictamen</span>' : isCertificacion ? '<span class="tipo-badge tipo-certificacion">Certificación</span>' : isOpinion ? '<span class="tipo-badge tipo-opinion">Opinión Técnica</span>' : '<span class="tipo-badge tipo-oficio">Oficio</span>'}
           </div>
           <span class="detail-numero">${o.numero_oficio}</span>
         </div>
@@ -374,21 +481,21 @@ async function openOficioModal(id) {
           <select id="det-estatus" class="filter-select" style="width:100%">${estatusOpts}</select>
         </div>
 
-        ${!isOpinion ? `
+        ${!needsUR ? `
         <div class="detail-item">
           <span class="detail-label">Destinatario</span>
           ${isAdmin
-            ? `<input type="text" id="det-destinatario" class="filter-select" style="width:100%" value="${q(o.destinatario)}">`
+            ? `<input type="text" id="det-destinatario" class="filter-select" style="width:100%" maxlength="255" value="${q(o.destinatario)}">`
             : `<span class="detail-value">${o.destinatario || '—'}</span>`}
         </div>
         <div class="detail-item">
           <span class="detail-label">Cargo del Destinatario</span>
           ${isAdmin
-            ? `<input type="text" id="det-cargo" class="filter-select" style="width:100%" value="${q(o.cargo_destinatario)}">`
+            ? `<input type="text" id="det-cargo" class="filter-select" style="width:100%" maxlength="255" value="${q(o.cargo_destinatario)}">`
             : `<span class="detail-value">${o.cargo_destinatario || '—'}</span>`}
         </div>` : `
         <div class="detail-item full">
-          <span class="detail-label">UR (Unidad Requirente)</span>
+          <span class="detail-label">Requirente</span>
           ${isAdmin
             ? `<select id="det-url-solicitante" class="filter-select" style="width:100%"><option value="">— Selecciona la UR —</option>${urOpts}</select>`
             : `<span class="detail-value">${o.url_solicitante || '—'}</span>`}
@@ -397,7 +504,7 @@ async function openOficioModal(id) {
         <div class="detail-item full">
           <span class="detail-label">Asunto</span>
           ${isAdmin
-            ? `<textarea id="det-asunto" class="filter-select" style="width:100%;min-height:72px;resize:vertical">${o.asunto || ''}</textarea>`
+            ? `<textarea id="det-asunto" class="filter-select" style="width:100%;min-height:72px;resize:vertical" maxlength="500">${o.asunto || ''}</textarea><div class="char-counter" id="det-asunto-counter"></div>`
             : `<span class="detail-value">${o.asunto}</span>`}
         </div>
 
@@ -410,7 +517,7 @@ async function openOficioModal(id) {
         <div class="detail-item">
           <span class="detail-label">Solicita</span>
           ${isAdmin
-            ? `<input type="text" id="det-solicita" class="filter-select" style="width:100%" value="${q(o.solicita)}">`
+            ? `<input type="text" id="det-solicita" class="filter-select" style="width:100%" maxlength="255" value="${q(o.solicita)}">`
             : `<span class="detail-value">${o.solicita}</span>`}
         </div>
 
@@ -429,9 +536,19 @@ async function openOficioModal(id) {
         <div class="detail-item full">
           <span class="detail-label">Justificación de firmante</span>
           ${isAdmin
-            ? `<textarea id="det-justificacion" class="filter-select" style="width:100%;min-height:60px;resize:vertical">${o.justificacion_firmante}</textarea>`
+            ? `<textarea id="det-justificacion" class="filter-select" style="width:100%;min-height:60px;resize:vertical" maxlength="255">${o.justificacion_firmante}</textarea>`
             : `<div class="justif-box">${o.justificacion_firmante}</div>`}
         </div>` : ''}
+
+        ${o.estatus === 'cancelado' ? `
+        <div id="reactivacion-wrapper" class="detail-item full" style="display:none">
+          <span class="detail-label">Justificación de reactivación <span class="required">*</span></span>
+          <textarea id="det-razon-reactivacion" class="filter-select" style="width:100%;min-height:72px;resize:vertical" maxlength="500" placeholder="Explica el motivo por el que se reactiva este documento"></textarea>
+        </div>` : (o.razon_reactivacion ? `
+        <div class="detail-item full">
+          <span class="detail-label">Justificación de reactivación</span>
+          <div class="justif-box">${o.razon_reactivacion}</div>
+        </div>` : '')}
 
         <div id="acuse-wrapper" style="${o.estatus === 'borrador' ? 'display:none' : ''}">
         <div class="detail-separator"></div>
@@ -496,10 +613,15 @@ async function openOficioModal(id) {
       </div>
     `;
         openModal('modal-oficio');
+        setupCharCounter('det-asunto', 500);
 
         document.getElementById('det-estatus').addEventListener('change', function () {
             document.getElementById('acuse-wrapper').style.display =
                 this.value === 'borrador' ? 'none' : '';
+            if (currentModalOriginalEstatus === 'cancelado') {
+                const w = document.getElementById('reactivacion-wrapper');
+                if (w) w.style.display = this.value !== 'cancelado' ? '' : 'none';
+            }
         });
     } catch (e) {
         toast(e.message, 'error');
@@ -515,6 +637,15 @@ async function saveOficioChanges(id) {
     if (['enviado', 'archivado'].includes(estatus) && !currentModalAcuse) {
         toast('Debes subir el acuse antes de cambiar a este estatus', 'error');
         return;
+    }
+
+    if (currentModalOriginalEstatus === 'cancelado' && estatus && estatus !== 'cancelado') {
+        const razon = document.getElementById('det-razon-reactivacion')?.value.trim();
+        if (!razon) {
+            toast('Debes justificar el motivo de reactivación antes de guardar', 'error');
+            return;
+        }
+        body.razon_reactivacion = razon;
     }
 
     if (estatus)     body.estatus     = estatus;
@@ -906,15 +1037,13 @@ function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
 // Listeners estáticos
 // =====================================================
 
-// Sidebar toggle
-document.getElementById('sidebar-toggle').addEventListener('click', () => {
-    document.getElementById('sidebar').classList.toggle('collapsed');
-});
-
 // Navegación
 document.querySelectorAll('.nav-item[data-view]').forEach(item =>
     item.addEventListener('click', e => { e.preventDefault(); showView(item.dataset.view); })
 );
+
+// Contador de caracteres — formulario de nuevo documento
+setupCharCounter('of-asunto', 500);
 
 // Toggle contraseña visible
 document.getElementById('btn-toggle-password').addEventListener('click', () => {
@@ -959,6 +1088,22 @@ document.getElementById('logout-btn').addEventListener('click', () => {
     if (confirm('¿Cerrar sesión?')) logout();
 });
 
+// Hamburger (mobile)
+const hamburger = document.getElementById('nav-hamburger');
+const topnavNav = document.getElementById('topnav-nav');
+hamburger.addEventListener('click', e => {
+    e.stopPropagation();
+    topnavNav.classList.toggle('mobile-open');
+});
+topnavNav.querySelectorAll('.nav-item').forEach(item => {
+    item.addEventListener('click', () => topnavNav.classList.remove('mobile-open'));
+});
+document.addEventListener('click', e => {
+    if (!topnavNav.contains(e.target) && !hamburger.contains(e.target)) {
+        topnavNav.classList.remove('mobile-open');
+    }
+});
+
 // Nuevo oficio – submit
 document.getElementById('nuevo-oficio-form').addEventListener('submit', async e => {
     e.preventDefault();
@@ -973,8 +1118,11 @@ document.getElementById('nuevo-oficio-form').addEventListener('submit', async e 
     btn.disabled = true;
 
     try {
-        const tipo = currentTipo;
-        const isOpinion = tipo === 'opinion';
+        const tipo            = currentTipo;
+        const isOpinion       = tipo === 'opinion';
+        const isDictamen      = tipo === 'dictamen';
+        const isCertificacion = tipo === 'certificacion';
+        const needsUR         = isOpinion || isDictamen;
         const body = {
             tipo,
             fecha: document.getElementById('of-fecha').value,
@@ -983,7 +1131,7 @@ document.getElementById('nuevo-oficio-form').addEventListener('submit', async e 
             solicita: document.getElementById('of-solicita').value,
             area: document.getElementById('of-area').value,
             justificacion_firmante: document.getElementById('of-justificacion').value || undefined,
-            ...(isOpinion
+            ...(needsUR
                 ? { url_solicitante: document.getElementById('of-url-solicitante').value }
                 : { destinatario: document.getElementById('of-destinatario').value,
                     cargo_destinatario: document.getElementById('of-cargo').value }),
@@ -991,7 +1139,7 @@ document.getElementById('nuevo-oficio-form').addEventListener('submit', async e 
         const oficio = await api('POST', '/oficios/generar', body);
         document.getElementById('numero-generado').textContent = oficio.numero_oficio;
         document.getElementById('numero-preview').classList.remove('hidden');
-        const label = tipo === 'opinion' ? 'Opinión Técnica' : 'Oficio';
+        const label = isDictamen ? 'Dictamen' : isCertificacion ? 'Certificación' : isOpinion ? 'Opinión Técnica' : 'Oficio';
         toast(`${label} ${oficio.numero_oficio} generado`, 'success');
         document.getElementById('nuevo-oficio-form').reset();
         document.getElementById('justificacion-group').style.display = 'none';
@@ -1009,13 +1157,13 @@ document.getElementById('nuevo-oficio-form').addEventListener('submit', async e 
 
 // Toggle campos según tipo de documento
 function applyTipoToggle(tipo) {
-    const isOpinion = tipo === 'opinion';
-    document.getElementById('destinatario-group').style.display = isOpinion ? 'none' : '';
-    document.getElementById('cargo-group').style.display = isOpinion ? 'none' : '';
-    document.getElementById('url-solicitante-group').style.display = isOpinion ? '' : 'none';
-    document.getElementById('of-destinatario').required = !isOpinion;
-    document.getElementById('of-cargo').required = !isOpinion;
-    document.getElementById('of-url-solicitante').required = isOpinion;
+    const needsUR = tipo === 'opinion' || tipo === 'dictamen';
+    document.getElementById('destinatario-group').style.display = needsUR ? 'none' : '';
+    document.getElementById('cargo-group').style.display = needsUR ? 'none' : '';
+    document.getElementById('url-solicitante-group').style.display = needsUR ? '' : 'none';
+    document.getElementById('of-destinatario').required = !needsUR;
+    document.getElementById('of-cargo').required = !needsUR;
+    document.getElementById('of-url-solicitante').required = needsUR;
 }
 // Justificación condicional
 document.getElementById('of-firmante').addEventListener('change', function () {
@@ -1077,12 +1225,20 @@ document.querySelectorAll('.tipo-tab').forEach(tab => {
         document.querySelectorAll('.tipo-tab').forEach(t => t.classList.remove('active'));
         tab.classList.add('active');
         document.getElementById('filter-tipo').value = tab.dataset.tipo;
+        historialPage = 1;
         loadHistorial(getHistorialFiltros());
     });
 });
 
 document.getElementById('btn-filtrar').addEventListener('click', () => {
+    historialPage = 1;
     loadHistorial(getHistorialFiltros());
+});
+
+document.getElementById('historial-page-size').addEventListener('change', e => {
+    historialPageSize = parseInt(e.target.value);
+    historialPage = 1;
+    renderHistorialTable(state.oficios);
 });
 document.getElementById('filter-q').addEventListener('keydown', e => {
     if (e.key === 'Enter') document.getElementById('btn-filtrar').click();
@@ -1099,9 +1255,6 @@ document.getElementById('btn-limpiar-filtros').addEventListener('click', () => {
 // Exportar
 document.getElementById('btn-export-excel').addEventListener('click', () => {
     fetchDownload(`/api/exportar/excel?${new URLSearchParams(getHistorialFiltros())}`, 'Documentos_DEAJ.xlsx');
-});
-document.getElementById('btn-export-pdf').addEventListener('click', () => {
-    fetchDownload(`/api/exportar/pdf?${new URLSearchParams(getHistorialFiltros())}`, 'Documentos_DEAJ.pdf');
 });
 
 // Botones "Nuevo" de catálogos
@@ -1145,7 +1298,7 @@ async function initApp() {
         el.style.display = isAdmin ? '' : 'none';
     });
 
-    // Info de usuario en sidebar
+    // Info de usuario en topnav
     document.getElementById('user-avatar').textContent = state.user.nombre[0].toUpperCase();
     document.getElementById('user-name').textContent = state.user.nombre;
     document.getElementById('user-role').textContent = isAdmin ? 'Administrador' : 'Usuario';

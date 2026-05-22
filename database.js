@@ -88,7 +88,10 @@ async function initDatabase() {
   // Migraciones — agregan columnas a tablas existentes sin recrearlas
   try { db.run(`ALTER TABLE oficios ADD COLUMN tipo TEXT NOT NULL DEFAULT 'oficio'`); } catch (_) {}
   try { db.run(`ALTER TABLE anios_config ADD COLUMN correlativo_opinion_actual INTEGER NOT NULL DEFAULT 0`); } catch (_) {}
+  try { db.run(`ALTER TABLE anios_config ADD COLUMN correlativo_dictamen_actual INTEGER NOT NULL DEFAULT 0`); } catch (_) {}
+  try { db.run(`ALTER TABLE anios_config ADD COLUMN correlativo_certificacion_actual INTEGER NOT NULL DEFAULT 0`); } catch (_) {}
   try { db.run(`ALTER TABLE oficios ADD COLUMN url_solicitante TEXT`); } catch (_) {}
+  try { db.run(`ALTER TABLE oficios ADD COLUMN razon_reactivacion TEXT`); } catch (_) {}
 
   // Datos iniciales — admin por defecto
   const adminExists = db.exec(`SELECT id FROM usuarios WHERE rol = 'admin' LIMIT 1`);
