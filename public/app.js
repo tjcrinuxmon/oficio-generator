@@ -63,7 +63,7 @@ async function api(method, path, body = null, isFormData = false) {
     } else if (body) {
         opts.body = body; // FormData
     }
-    const res = await fetch(`/api${path}`, opts);
+    const res = await fetch(`/api/of${path}`, opts);
     if (res.status === 401) { logout(); return null; }
     if (!res.ok) {
         const err = await res.json().catch(() => ({ error: res.statusText }));
@@ -134,7 +134,7 @@ async function fetchDownload(url, filename) {
 
 // ── Auth ────────────────────────────────────────────
 async function login(email, password) {
-    const res = await fetch('/api/auth/login', {
+    const res = await fetch('/api/of/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
@@ -150,8 +150,7 @@ function logout() {
     state.token = null;
     state.user = null;
     localStorage.removeItem('ine_token');
-    document.getElementById('login-page').classList.remove('hidden');
-    document.getElementById('app').classList.add('hidden');
+    window.location.replace('/');
 }
 
 // ── Navegación ──────────────────────────────────────
@@ -1276,14 +1275,14 @@ document.getElementById('modal-oficio').addEventListener('click', e => {
 // Inicialización
 // =====================================================
 async function initApp() {
-    if (!state.token) {
-        document.getElementById('login-page').classList.remove('hidden');
-        document.getElementById('app').classList.add('hidden');
-        return;
-    }
+    // SSO desde el portal
+    const ssoToken = new URLSearchParams(location.search).get('sso_token')
+    if (ssoToken) { window.location.href = `/api/of/auth/sso?sso_token=${ssoToken}`; return }
+
+    if (!state.token) { window.location.replace('/'); return; }
 
     try {
-        const res = await fetch('/api/auth/me', { headers: { Authorization: `Bearer ${state.token}` } });
+        const res = await fetch('/api/of/auth/me', { headers: { Authorization: `Bearer ${state.token}` } });
         if (!res.ok) { logout(); return; }
         const json = await res.json();
         state.user = json.user;

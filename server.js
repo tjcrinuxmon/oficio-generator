@@ -6,7 +6,7 @@ const path = require('path');
 const { initDatabase } = require('./database');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3003;
 
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors());
@@ -14,13 +14,12 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Rutas
-app.use('/api/auth', require('./routes/auth'));
-app.use('/api/oficios', require('./routes/oficios'));
-app.use('/api/firmantes', require('./routes/firmantes'));
+app.use('/api/auth',     require('./routes/auth'));
 app.use('/api/usuarios', require('./routes/usuarios'));
-app.use('/api/anios', require('./routes/anios'));
-app.use('/api/exportar', require('./routes/exportar'));
+app.use('/api/oficios',     require('./routes/oficios'));
+app.use('/api/firmantes',   require('./routes/firmantes'));
+app.use('/api/anios',       require('./routes/anios'));
+app.use('/api/exportar',    require('./routes/exportar'));
 
 // SPA fallback
 app.get('*', (req, res) => {

@@ -52,7 +52,7 @@ router.get('/sso', (req, res) => {
     user = { id, nombre, email, rol };
     const token = jwt.sign({ id, email, rol }, JWT_SECRET, { expiresIn: '8h' });
     const userJson = JSON.stringify(user).replace(/'/g, "\\'");
-    res.send(`<!DOCTYPE html><html><body><script>localStorage.setItem('ine_token','${token}');window.location.href='/';</script></body></html>`);
+    res.send(`<!DOCTYPE html><html><body><script>localStorage.setItem('ine_token','${token}');window.location.href='/oficios';</script></body></html>`);
   } catch (e) {
     res.redirect('/?error=invalid_token');
   }
