@@ -1,11 +1,11 @@
-const { DatabaseSync: Database } = require('node:sqlite');
+const Database = require('better-sqlite3');
 const bcrypt = require('bcryptjs');
 const path = require('path');
 
 const DB_PATH = path.join(__dirname, 'oficio_db.sqlite');
 const db = new Database(DB_PATH);
 
-db.exec("PRAGMA journal_mode = WAL");
+db.pragma('journal_mode = WAL');
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS usuarios (
