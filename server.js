@@ -3,7 +3,8 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const path = require('path');
-const { initDatabase } = require('./database');
+
+require('./database'); // synchronous init — runs migrations and seeds on startup
 
 const app = express();
 const PORT = process.env.PORT || 3003;
@@ -14,31 +15,24 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.use('/api/auth',     require('./routes/auth'));
-app.use('/api/usuarios', require('./routes/usuarios'));
-app.use('/api/oficios',     require('./routes/oficios'));
-app.use('/api/firmantes',   require('./routes/firmantes'));
-app.use('/api/anios',       require('./routes/anios'));
-app.use('/api/exportar',    require('./routes/exportar'));
+app.use('/api/auth',      require('./routes/auth'));
+app.use('/api/usuarios',  require('./routes/usuarios'));
+app.use('/api/oficios',   require('./routes/oficios'));
+app.use('/api/firmantes', require('./routes/firmantes'));
+app.use('/api/anios',     require('./routes/anios'));
+app.use('/api/exportar',  require('./routes/exportar'));
 
-// SPA fallback
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Error handler
 app.use((err, req, res, next) => {
   console.error(err);
   res.status(500).json({ error: err.message });
 });
 
-initDatabase().then(() => {
-  app.listen(PORT, () => {
-    console.log(`\n🚀 Sistema de Oficios INE/DEAJ corriendo en http://localhost:${PORT}`);
-    console.log(`👤 Admin inicial: admin@deaj.ine.mx / Admin1234!`);
-    console.log(`📋 Correlativo 2026 iniciando en: 8411\n`);
-  });
-}).catch(err => {
-  console.error('❌ Error al inicializar la base de datos:', err);
-  process.exit(1);
+app.listen(PORT, () => {
+  console.log(`\n🚀 Sistema de Oficios INE/DEAJ corriendo en http://localhost:${PORT}`);
+  console.log(`👤 Admin inicial: admin@deaj.ine.mx / Admin1234!`);
+  console.log(`📋 Correlativo 2026 iniciando en: 8411\n`);
 });

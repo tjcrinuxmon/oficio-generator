@@ -1,6 +1,6 @@
 const express = require('express');
 const ExcelJS = require('exceljs');
-const { getDb } = require('../database');
+const db = require('../database');
 const { authMiddleware } = require('../middleware/auth');
 const { generateINELogoBuffer } = require('../utils/logo');
 
@@ -10,21 +10,20 @@ router.use(authMiddleware);
 const ESTATUS_LABEL = { borrador: 'Borrador', enviado: 'Enviado', recibido: 'Recibido', archivado: 'Archivado', cancelado: 'Cancelado' };
 const TIPO_LABEL    = { oficio: 'Oficio', opinion: 'Opinión Técnica', dictamen: 'Dictamen', certificacion: 'Certificación' };
 
-// ── Query helper ──────────────────────────────────────────────────────────────
-function getOficios(db, query, user) {
+function getOficios(query, user) {
   const { estatus, tipo, area, firmante_id, fecha_inicio, fecha_fin, q } = query;
   const where = ['1=1'];
-  // Usuarios no-admin solo ven sus propios documentos
-  if (user.rol !== 'admin') where.push(`o.creado_por = ${parseInt(user.id)}`);
-  if (estatus)      where.push(`o.estatus = '${estatus.replace(/'/g, "''")}'`);
-  if (tipo)         where.push(`(COALESCE(o.tipo,'oficio') = '${tipo.replace(/'/g, "''")}')`);
-  if (area)         where.push(`o.area LIKE '%${area.replace(/'/g, "''")}%'`);
-  if (firmante_id)  where.push(`o.firmante_id = ${parseInt(firmante_id)}`);
-  if (fecha_inicio) where.push(`o.fecha >= '${fecha_inicio}'`);
-  if (fecha_fin)    where.push(`o.fecha <= '${fecha_fin}'`);
+  const params = [];
+  if (user.rol !== 'admin') { where.push('o.creado_por = ?'); params.push(parseInt(user.id)); }
+  if (estatus)      { where.push("o.estatus = ?"); params.push(estatus); }
+  if (tipo)         { where.push("COALESCE(o.tipo,'oficio') = ?"); params.push(tipo); }
+  if (area)         { where.push("o.area LIKE ?"); params.push(`%${area}%`); }
+  if (firmante_id)  { where.push("o.firmante_id = ?"); params.push(parseInt(firmante_id)); }
+  if (fecha_inicio) { where.push("o.fecha >= ?"); params.push(fecha_inicio); }
+  if (fecha_fin)    { where.push("o.fecha <= ?"); params.push(fecha_fin); }
   if (q) {
-    const sq = q.replace(/'/g, "''");
-    where.push(`(o.numero_oficio LIKE '%${sq}%' OR o.destinatario LIKE '%${sq}%' OR o.asunto LIKE '%${sq}%' OR o.url_solicitante LIKE '%${sq}%')`);
+    where.push("(o.numero_oficio LIKE ? OR o.destinatario LIKE ? OR o.asunto LIKE ? OR o.url_solicitante LIKE ?)");
+    params.push(`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`);
   }
 
   const sql = `
@@ -39,17 +38,9 @@ function getOficios(db, query, user) {
     WHERE ${where.join(' AND ')}
     ORDER BY o.correlativo DESC
   `;
-  const result = db.exec(sql);
-  if (!result.length) return [];
-  const { columns, values } = result[0];
-  return values.map(row => {
-    const obj = {};
-    columns.forEach((c, i) => { obj[c] = row[i]; });
-    return obj;
-  });
+  return db.prepare(sql).all(...params);
 }
 
-// ── Shared helpers ────────────────────────────────────────────────────────────
 function fmtFecha(f) {
   if (!f) return '—';
   const d = new Date(f.includes('T') ? f : f + 'T12:00:00');
@@ -63,19 +54,16 @@ function shortArea(a) {
     .replace('Dirección de ', 'Dir. ');
 }
 
-// ── Excel export ─────────────────────────────────────────────────────────────
+// GET /api/exportar/excel
 router.get('/excel', async (req, res) => {
-  const db   = getDb();
-  const rows = getOficios(db, req.query, req.user);
+  const rows = getOficios(req.query, req.user);
 
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Sistema DEAJ-INE';
   const ws = wb.addWorksheet('Documentos', { views: [{ state: 'frozen', ySplit: 3 }] });
 
-  // ── Fila 1: Logo + Título ────────────────────────────────────────────────
   ws.getRow(1).height = 52;
 
-  // Columnas A-B: área del logo (fondo morado, sin texto)
   ws.mergeCells('A1:B1');
   const logoCell = ws.getCell('A1');
   logoCell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF582E73' } };
@@ -83,15 +71,9 @@ router.get('/excel', async (req, res) => {
   ws.getColumn(1).width = 8;
   ws.getColumn(2).width = 8;
 
-  // Logo PNG incrustado en A1:B1
   const logoId = wb.addImage({ buffer: generateINELogoBuffer(), extension: 'png' });
-  ws.addImage(logoId, {
-    tl: { col: 0, row: 0 },
-    br: { col: 2, row: 1 },
-    editAs: 'absolute',
-  });
+  ws.addImage(logoId, { tl: { col: 0, row: 0 }, br: { col: 2, row: 1 }, editAs: 'absolute' });
 
-  // Columnas C-K: título institucional
   ws.mergeCells('C1:K1');
   const titleCell = ws.getCell('C1');
   titleCell.value     = 'REGISTRO DE DOCUMENTOS — INE/DEAJ';
@@ -99,7 +81,6 @@ router.get('/excel', async (req, res) => {
   titleCell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF582E73' } };
   titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
 
-  // ── Fila 2: Cabeceras de columnas ────────────────────────────────────────
   const headers = ['Número', 'Fecha', 'Tipo', 'Destinatario / UR Solicitante',
     'Asunto', 'Firmante', 'Área', 'Estatus', 'Registrado', 'Registrado por', 'Acuse'];
   const hr = ws.addRow(headers);
