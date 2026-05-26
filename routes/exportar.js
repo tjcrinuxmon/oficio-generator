@@ -43,7 +43,9 @@ function getOficios(query, user) {
 
 function fmtFecha(f) {
   if (!f) return '—';
-  const d = new Date(f.includes('T') ? f : f + 'T12:00:00');
+  const normalized = f.includes('T') ? f : f.replace(' ', 'T');
+  const d = new Date(normalized);
+  if (isNaN(d.getTime())) return f.slice(0, 10);
   return d.toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 

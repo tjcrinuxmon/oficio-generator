@@ -133,19 +133,6 @@ async function fetchDownload(url, filename) {
 }
 
 // ── Auth ────────────────────────────────────────────
-async function login(email, password) {
-    const res = await fetch('/api/of/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Error al iniciar sesión');
-    state.token = data.token;
-    state.user = data.user;
-    localStorage.setItem('ine_token', data.token);
-}
-
 function logout() {
     state.token = null;
     state.user = null;
@@ -164,7 +151,7 @@ function showView(view) {
 
     if (view === 'dashboard') loadDashboard();
     if (view === 'nuevo') loadNuevo();
-    if (view === 'historial') loadHistorial();
+    if (view === 'historial') loadHistorial(getHistorialFiltros());
     if (view === 'firmantes') loadFirmantes();
     if (view === 'anios') loadAnios();
     if (view === 'usuarios') loadUsuarios();
@@ -199,7 +186,7 @@ function renderRecientes(containerId, items, emptyMsg) {
         </table>
       </div>`;
     container.querySelectorAll('.reciente-row').forEach(el =>
-        el.addEventListener('click', () => openOficioModal(el.dataset.id))
+        el.addEventListener('click', () => openOficioModal(el.dataset.id, true))
     );
 }
 
@@ -417,17 +404,17 @@ async function loadNuevo() {
             firmantes.map(f =>
                 `<option value="${f.id}">${f.nombre}${f.es_titular ? ' (Titular)' : ''}</option>`
             ).join('');
-        // fecha por defecto
-        if (!document.getElementById('of-fecha').value) {
-            document.getElementById('of-fecha').value = new Date().toISOString().slice(0, 10);
-        }
+        // fecha por defecto — siempre hoy, no editable
+        const todayVal = new Date().toISOString().slice(0, 10);
+        document.getElementById('of-fecha').value = todayVal;
+        document.getElementById('of-fecha-display').textContent = formatFecha(todayVal);
     } catch (e) {
         toast(e.message, 'error');
     }
 }
 
 // ── Modal Oficio Detalle ──────────────────────────────
-async function openOficioModal(id) {
+async function openOficioModal(id, readOnly = false) {
     try {
         const [o, firmantes] = await Promise.all([
             api('GET', `/oficios/${id}`),
@@ -477,7 +464,10 @@ async function openOficioModal(id) {
         </div>
         <div class="detail-item">
           <span class="detail-label">Estatus</span>
-          <select id="det-estatus" class="filter-select" style="width:100%">${estatusOpts}</select>
+          ${readOnly
+            ? `<span class="status-badge status-${o.estatus}">${labelEstatus(o.estatus)}</span>`
+            : `<select id="det-estatus" class="filter-select" style="width:100%">${estatusOpts}</select>`
+          }
         </div>
 
         ${!needsUR ? `
@@ -568,21 +558,15 @@ async function openOficioModal(id) {
               </div>
             </div>
             <div class="acuse-attached-btns">
-              <button class="btn btn-secondary btn-sm btn-icon-only" title="Ver PDF" onclick="viewAcuse(${o.id})">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-              </button>
-              <button class="btn btn-secondary btn-sm btn-icon-only" title="Descargar PDF" onclick="downloadAcuse(${o.id})">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-              </button>
-              <button class="btn btn-danger btn-sm btn-icon-only" title="Eliminar acuse" onclick="deleteAcuse(${o.id})">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
-              </button>
+              <button class="btn btn-secondary btn-sm" onclick="viewAcuse(${o.id})">Ver</button>
+              <button class="btn btn-secondary btn-sm" onclick="downloadAcuse(${o.id})">Descargar</button>
+              ${!readOnly ? `<button class="btn btn-danger btn-sm" onclick="deleteAcuse(${o.id})">Eliminar</button>` : ''}
             </div>
           </div>
           <div class="acuse-replace-label">Reemplazar archivo:</div>
           ` : ''}
 
-          <div class="acuse-dropzone" id="acuse-dropzone" onclick="document.getElementById('det-acuse-file').click()">
+          <div class="acuse-dropzone" id="acuse-dropzone" style="${readOnly ? 'display:none' : ''}" onclick="document.getElementById('det-acuse-file').click()">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
             <div>
               <div class="acuse-dropzone-main">${o.acuse_path ? 'Seleccionar nuevo PDF' : 'Seleccionar PDF'}</div>
@@ -607,14 +591,17 @@ async function openOficioModal(id) {
       </div>
 
       <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
-        <button class="btn btn-secondary" onclick="closeModal('modal-oficio')">Cancelar</button>
-        <button class="btn btn-primary" onclick="saveOficioChanges(${o.id})">Guardar cambios</button>
+        <button class="btn btn-secondary" onclick="closeModal('modal-oficio')">Cerrar</button>
+        ${readOnly
+          ? `<button class="btn btn-primary" onclick="closeModal('modal-oficio');openOficioModal(${o.id},false)">Editar</button>`
+          : `<button class="btn btn-primary" onclick="saveOficioChanges(${o.id})">Guardar cambios</button>`
+        }
       </div>
     `;
         openModal('modal-oficio');
         setupCharCounter('det-asunto', 500);
 
-        document.getElementById('det-estatus').addEventListener('change', function () {
+        if (!readOnly) document.getElementById('det-estatus').addEventListener('change', function () {
             document.getElementById('acuse-wrapper').style.display =
                 this.value === 'borrador' ? 'none' : '';
             if (currentModalOriginalEstatus === 'cancelado') {
@@ -636,6 +623,21 @@ async function saveOficioChanges(id) {
     if (['enviado', 'archivado'].includes(estatus) && !currentModalAcuse) {
         toast('Debes subir el acuse antes de cambiar a este estatus', 'error');
         return;
+    }
+
+    if (estatus === 'cancelado' && currentModalAcuse && currentModalOriginalEstatus !== 'cancelado') {
+        const numero = document.getElementById('modal-oficio-titulo')?.textContent || 'este documento';
+        const ok = confirm(
+            `¿Cancelar el documento ${numero}?\n\n` +
+            `Esta acción:\n` +
+            `  • Marcará el número de oficio como CANCELADO\n` +
+            `  • Eliminará permanentemente el acuse adjunto\n\n` +
+            `Esta operación no se puede deshacer.`
+        );
+        if (!ok) {
+            document.getElementById('det-estatus').value = currentModalOriginalEstatus;
+            return;
+        }
     }
 
     if (currentModalOriginalEstatus === 'cancelado' && estatus && estatus !== 'cancelado') {
@@ -851,16 +853,17 @@ async function loadAnios() {
     try {
         const anios = await api('GET', '/anios');
         state.anios = anios;
+        const corrCell = (inicio, actual, prefix) => {
+            const last = actual > 0 ? `<span style="font-family:monospace;font-size:11px;color:var(--ine-purple)">${prefix}${String(actual).padStart(3,'0')}</span>` : '—';
+            return `<td style="text-align:center"><span style="font-size:11px;color:#9ca3af">${inicio} →</span> ${actual} ${last}</td>`;
+        };
         document.getElementById('anios-tbody').innerHTML = anios.map(a => `
       <tr>
         <td><strong>${a.anio}</strong></td>
-        <td>${a.correlativo_inicio}</td>
-        <td>${a.correlativo_actual}</td>
-        <td style="font-family:monospace;font-size:12px;color:var(--ine-purple)">
-          ${a.correlativo_actual > a.correlativo_inicio
-                ? `INE/DEAJ/${String(a.correlativo_actual).padStart(3, '0')}/${a.anio}`
-                : '—'}
-        </td>
+        ${corrCell(a.correlativo_inicio, a.correlativo_actual, `INE/DEAJ/`)}
+        ${corrCell(a.correlativo_opinion_inicio ?? 1, a.correlativo_opinion_actual ?? 0, `OTJ/`)}
+        ${corrCell(a.correlativo_dictamen_inicio ?? 1, a.correlativo_dictamen_actual ?? 0, `DTJ/`)}
+        ${corrCell(a.correlativo_certificacion_inicio ?? 1, a.correlativo_certificacion_actual ?? 0, `DEAJ-`)}
         <td><span class="status-badge ${a.activo ? 'status-recibido' : 'status-archivado'}">${a.activo ? 'Activo' : 'Inactivo'}</span></td>
         <td>
           <div class="table-actions">
@@ -878,15 +881,30 @@ async function loadAnios() {
 
 function openAnioModal(id = null) {
     const a = id ? state.anios.find(x => x.id === id) : null;
-    document.getElementById('modal-title').textContent = a ? 'Editar Correlativo' : 'Nuevo Año';
+    document.getElementById('modal-title').textContent = a ? 'Editar Correlativos' : 'Nuevo Año';
     document.getElementById('modal-body').innerHTML = `
     ${!a ? `<div class="form-group" style="margin-bottom:16px">
       <label>Año *</label>
       <input type="number" id="an-anio" value="${new Date().getFullYear()}" min="2020" max="2099" />
     </div>` : ''}
-    <div class="form-group">
-      <label>Correlativo Inicial *</label>
-      <input type="number" id="an-correlativo" value="${a?.correlativo_inicio ?? 1}" min="1" />
+    <p style="font-size:12px;color:#6b7280;margin-bottom:12px">Correlativo inicial por tipo de instrumento</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="form-group">
+        <label>Oficios *</label>
+        <input type="number" id="an-correlativo" value="${a?.correlativo_inicio ?? 1}" min="1" />
+      </div>
+      <div class="form-group">
+        <label>Opiniones Técnicas</label>
+        <input type="number" id="an-correlativo-opinion" value="${a?.correlativo_opinion_inicio ?? 1}" min="1" />
+      </div>
+      <div class="form-group">
+        <label>Dictámenes</label>
+        <input type="number" id="an-correlativo-dictamen" value="${a?.correlativo_dictamen_inicio ?? 1}" min="1" />
+      </div>
+      <div class="form-group">
+        <label>Certificaciones</label>
+        <input type="number" id="an-correlativo-certificacion" value="${a?.correlativo_certificacion_inicio ?? 1}" min="1" />
+      </div>
     </div>
   `;
     document.getElementById('modal-footer').innerHTML = `
@@ -897,15 +915,19 @@ function openAnioModal(id = null) {
 }
 
 async function saveAnio(id) {
-    const correlativo_inicio = parseInt(document.getElementById('an-correlativo').value);
-    if (!correlativo_inicio) { toast('Correlativo requerido', 'error'); return; }
+    const correlativo_inicio              = parseInt(document.getElementById('an-correlativo').value) || 1;
+    const correlativo_opinion_inicio      = parseInt(document.getElementById('an-correlativo-opinion').value) || 1;
+    const correlativo_dictamen_inicio     = parseInt(document.getElementById('an-correlativo-dictamen').value) || 1;
+    const correlativo_certificacion_inicio = parseInt(document.getElementById('an-correlativo-certificacion').value) || 1;
+    if (!correlativo_inicio) { toast('Correlativo de oficios requerido', 'error'); return; }
+    const body = { correlativo_inicio, correlativo_opinion_inicio, correlativo_dictamen_inicio, correlativo_certificacion_inicio };
     try {
         if (id) {
-            await api('PUT', `/anios/${id}`, { correlativo_inicio });
+            await api('PUT', `/anios/${id}`, body);
         } else {
             const anio = parseInt(document.getElementById('an-anio').value);
             if (!anio) { toast('Año requerido', 'error'); return; }
-            await api('POST', '/anios', { anio, correlativo_inicio });
+            await api('POST', '/anios', { anio, ...body });
         }
         toast('Año guardado', 'success');
         closeModal('modal-generic');
@@ -1044,43 +1066,6 @@ document.querySelectorAll('.nav-item[data-view]').forEach(item =>
 // Contador de caracteres — formulario de nuevo documento
 setupCharCounter('of-asunto', 500);
 
-// Toggle contraseña visible
-document.getElementById('btn-toggle-password').addEventListener('click', () => {
-    const input = document.getElementById('login-password');
-    const isText = input.type === 'text';
-    input.type = isText ? 'password' : 'text';
-    document.getElementById('icon-eye').style.display = isText ? '' : 'none';
-    document.getElementById('icon-eye-off').style.display = isText ? 'none' : '';
-});
-
-// Login
-document.getElementById('login-form').addEventListener('submit', async e => {
-    e.preventDefault();
-    const btn = document.getElementById('login-btn');
-    const errEl = document.getElementById('login-error');
-    const spinner = btn.querySelector('.btn-spinner');
-    const text = btn.querySelector('.btn-text');
-
-    errEl.classList.add('hidden');
-    text.classList.add('hidden');
-    spinner.classList.remove('hidden');
-    btn.disabled = true;
-
-    try {
-        await login(
-            document.getElementById('login-email').value.trim(),
-            document.getElementById('login-password').value,
-        );
-        initApp();
-    } catch (ex) {
-        errEl.textContent = ex.message;
-        errEl.classList.remove('hidden');
-    } finally {
-        text.classList.remove('hidden');
-        spinner.classList.add('hidden');
-        btn.disabled = false;
-    }
-});
 
 // Logout
 document.getElementById('logout-btn').addEventListener('click', () => {
@@ -1143,7 +1128,9 @@ document.getElementById('nuevo-oficio-form').addEventListener('submit', async e 
         document.getElementById('nuevo-oficio-form').reset();
         document.getElementById('justificacion-group').style.display = 'none';
         applyTipoToggle(currentTipo);
-        document.getElementById('of-fecha').value = new Date().toISOString().slice(0, 10);
+        const todayAfter = new Date().toISOString().slice(0, 10);
+        document.getElementById('of-fecha').value = todayAfter;
+        document.getElementById('of-fecha-display').textContent = formatFecha(todayAfter);
     } catch (ex) {
         errEl.textContent = ex.message;
         errEl.classList.remove('hidden');
@@ -1186,7 +1173,9 @@ document.getElementById('btn-limpiar').addEventListener('click', () => {
     applyTipoToggle(currentTipo);
     document.getElementById('numero-preview').classList.add('hidden');
     document.getElementById('nuevo-error').classList.add('hidden');
-    document.getElementById('of-fecha').value = new Date().toISOString().slice(0, 10);
+    const todayClean = new Date().toISOString().slice(0, 10);
+    document.getElementById('of-fecha').value = todayClean;
+    document.getElementById('of-fecha-display').textContent = formatFecha(todayClean);
 });
 
 // Copiar número
@@ -1302,7 +1291,7 @@ async function initApp() {
     document.getElementById('user-name').textContent = state.user.nombre;
     document.getElementById('user-role').textContent = isAdmin ? 'Administrador' : 'Usuario';
 
-    document.getElementById('login-page').classList.add('hidden');
+    document.getElementById('auth-loading').style.display = 'none';
     document.getElementById('app').classList.remove('hidden');
 
     showView('dashboard');

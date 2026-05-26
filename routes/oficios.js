@@ -57,7 +57,7 @@ function buildWhere(query, userId, rol) {
 // GET /api/oficios
 router.get('/', (req, res) => {
   const { clause, params } = buildWhere(req.query, req.user.id, req.user.rol);
-  const sql = `SELECT o.*, f.nombre as firmante_nombre, f.cargo as firmante_cargo, f.es_titular, u.nombre as creado_por_nombre ${JOIN} WHERE ${clause} ORDER BY o.correlativo DESC`;
+  const sql = `SELECT o.*, f.nombre as firmante_nombre, f.cargo as firmante_cargo, f.es_titular, u.nombre as creado_por_nombre ${JOIN} WHERE ${clause} ORDER BY o.id DESC`;
   res.json(db.prepare(sql).all(...params));
 });
 
@@ -139,6 +139,14 @@ router.put('/:id', (req, res) => {
 
   const sets = [];
   const params = [];
+
+  if (estatus === 'cancelado') {
+    const row = db.prepare(`SELECT acuse_path FROM oficios WHERE id = ?`).get(req.params.id);
+    if (row?.acuse_path) {
+      if (fs.existsSync(row.acuse_path)) fs.unlinkSync(row.acuse_path);
+      sets.push('acuse_path = NULL');
+    }
+  }
   if (estatus)                        { sets.push('estatus = ?'); params.push(estatus); }
   if (fecha)                          { sets.push('fecha = ?'); params.push(fecha); }
   if (destinatario)                   { sets.push('destinatario = ?'); params.push(destinatario); }

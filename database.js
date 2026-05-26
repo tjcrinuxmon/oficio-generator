@@ -70,14 +70,19 @@ try { db.exec(`ALTER TABLE oficios ADD COLUMN tipo TEXT NOT NULL DEFAULT 'oficio
 try { db.exec(`ALTER TABLE anios_config ADD COLUMN correlativo_opinion_actual INTEGER NOT NULL DEFAULT 0`); } catch (_) {}
 try { db.exec(`ALTER TABLE anios_config ADD COLUMN correlativo_dictamen_actual INTEGER NOT NULL DEFAULT 0`); } catch (_) {}
 try { db.exec(`ALTER TABLE anios_config ADD COLUMN correlativo_certificacion_actual INTEGER NOT NULL DEFAULT 0`); } catch (_) {}
+try { db.exec(`ALTER TABLE anios_config ADD COLUMN correlativo_opinion_inicio INTEGER NOT NULL DEFAULT 1`); } catch (_) {}
+try { db.exec(`ALTER TABLE anios_config ADD COLUMN correlativo_dictamen_inicio INTEGER NOT NULL DEFAULT 1`); } catch (_) {}
+try { db.exec(`ALTER TABLE anios_config ADD COLUMN correlativo_certificacion_inicio INTEGER NOT NULL DEFAULT 1`); } catch (_) {}
 try { db.exec(`ALTER TABLE oficios ADD COLUMN url_solicitante TEXT`); } catch (_) {}
 try { db.exec(`ALTER TABLE oficios ADD COLUMN razon_reactivacion TEXT`); } catch (_) {}
 
 // Seed: default admin
 if (!db.prepare(`SELECT id FROM usuarios WHERE rol = 'admin' LIMIT 1`).get()) {
-  const hash = bcrypt.hashSync('Admin1234!', 10);
+  const adminPwd = process.env.ADMIN_SEED_PASSWORD || require('crypto').randomBytes(12).toString('base64url');
+  const hash = bcrypt.hashSync(adminPwd, 10);
   db.prepare(`INSERT INTO usuarios (nombre, email, password_hash, rol) VALUES (?, ?, ?, ?)`)
     .run('Administrador', 'admin@deaj.ine.mx', hash, 'admin');
+  console.log(`👤 Admin creado: admin@deaj.ine.mx / ${adminPwd}  ← guarda esta contraseña`);
 }
 
 // Seed: default titular
