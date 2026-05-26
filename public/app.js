@@ -1084,7 +1084,7 @@ document.getElementById('login-form').addEventListener('submit', async e => {
 
 // Logout
 document.getElementById('logout-btn').addEventListener('click', () => {
-    if (confirm('¿Cerrar sesión?')) logout();
+    logout();
 });
 
 // Hamburger (mobile)
