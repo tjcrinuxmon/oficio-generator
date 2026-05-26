@@ -391,11 +391,15 @@ function selectTipo(tipo) {
     badge.textContent = badges[tipo] || 'Oficio';
     document.querySelector('#btn-generar .btn-text').textContent = btnLabels[tipo] || '✉️ Generar Oficio';
     applyTipoToggle(tipo);
+    document.getElementById('numero-preview').classList.add('hidden');
+    document.getElementById('numero-generado').textContent = '';
     showView('nuevo');
 }
 
 // ── Nuevo Oficio ─────────────────────────────────────
 async function loadNuevo() {
+    document.getElementById('numero-preview').classList.add('hidden');
+    document.getElementById('numero-generado').textContent = '';
     try {
         const firmantes = await api('GET', '/firmantes');
         state.firmantes = firmantes;
