@@ -425,6 +425,8 @@ async function openOficioModal(id, readOnly = false) {
             state.firmantes.length ? Promise.resolve(state.firmantes) : api('GET', '/firmantes'),
         ]);
         state.firmantes = firmantes;
+        const currentFirmante = firmantes.find(f => f.id == o.firmante_id);
+        const currentIsNoTitular = currentFirmante && !currentFirmante.es_titular;
 
         const estatusDisponibles = o.acuse_path
             ? ['enviado', 'archivado', 'cancelado']
@@ -525,13 +527,17 @@ async function openOficioModal(id, readOnly = false) {
           <span class="detail-value">${o.creado_por_nombre || '—'}</span>
         </div>
 
-        ${o.justificacion_firmante ? `
+        ${readOnly
+          ? (o.justificacion_firmante ? `
         <div class="detail-item full">
           <span class="detail-label">Justificación de firmante</span>
-          ${isAdmin
-            ? `<textarea id="det-justificacion" class="filter-select" style="width:100%;min-height:60px;resize:vertical" maxlength="255">${o.justificacion_firmante}</textarea>`
-            : `<div class="justif-box">${o.justificacion_firmante}</div>`}
-        </div>` : ''}
+          <div class="justif-box">${o.justificacion_firmante}</div>
+        </div>` : '')
+          : `
+        <div id="justif-firmante-wrapper" class="detail-item full" style="${currentIsNoTitular ? '' : 'display:none'}">
+          <span class="detail-label">Justificación de firmante <span class="required">*</span></span>
+          <textarea id="det-justificacion" class="filter-select" style="width:100%;min-height:60px;resize:vertical" maxlength="255">${o.justificacion_firmante || ''}</textarea>
+        </div>`}
 
         ${o.estatus === 'cancelado' ? `
         <div id="reactivacion-wrapper" class="detail-item full" style="display:none">
@@ -613,6 +619,19 @@ async function openOficioModal(id, readOnly = false) {
                 if (w) w.style.display = this.value !== 'cancelado' ? '' : 'none';
             }
         });
+
+        if (!readOnly) document.getElementById('det-firmante')?.addEventListener('change', function () {
+            const f = state.firmantes.find(f => f.id == this.value);
+            const wrapper = document.getElementById('justif-firmante-wrapper');
+            if (!wrapper) return;
+            if (f && !f.es_titular) {
+                wrapper.style.display = '';
+            } else {
+                wrapper.style.display = 'none';
+                const ta = document.getElementById('det-justificacion');
+                if (ta) ta.value = '';
+            }
+        });
     } catch (e) {
         toast(e.message, 'error');
     }
@@ -656,6 +675,18 @@ async function saveOficioChanges(id) {
     if (estatus)     body.estatus     = estatus;
     if (firmante_id) body.firmante_id = firmante_id;
 
+    const justifWrapper = document.getElementById('justif-firmante-wrapper');
+    const justif = document.getElementById('det-justificacion')?.value?.trim() ?? null;
+    if (justifWrapper && justifWrapper.style.display !== 'none') {
+        if (!justif) {
+            toast('Debes justificar por qué no firma la ejecutiva titular', 'error');
+            return;
+        }
+        body.justificacion_firmante = justif;
+    } else if (firmante_id && state.firmantes.find(f => f.id == firmante_id)?.es_titular) {
+        body.justificacion_firmante = '';
+    }
+
     if (state.user.rol === 'admin') {
         const fecha       = document.getElementById('det-fecha')?.value;
         const asunto      = document.getElementById('det-asunto')?.value;
@@ -664,7 +695,6 @@ async function saveOficioChanges(id) {
         const destinatario = document.getElementById('det-destinatario')?.value;
         const cargo       = document.getElementById('det-cargo')?.value;
         const ur          = document.getElementById('det-url-solicitante')?.value;
-        const justif      = document.getElementById('det-justificacion')?.value;
 
         if (fecha)       body.fecha               = fecha;
         if (asunto)      body.asunto              = asunto;
@@ -673,7 +703,6 @@ async function saveOficioChanges(id) {
         if (destinatario !== undefined && destinatario !== null) body.destinatario     = destinatario;
         if (cargo        !== undefined && cargo        !== null) body.cargo_destinatario = cargo;
         if (ur           !== undefined && ur           !== null) body.url_solicitante  = ur;
-        if (justif       !== undefined && justif       !== null) body.justificacion_firmante = justif;
     }
 
     try {
