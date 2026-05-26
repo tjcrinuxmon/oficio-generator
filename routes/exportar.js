@@ -61,7 +61,7 @@ router.get('/excel', async (req, res) => {
   const rows = getOficios(req.query, req.user);
 
   const wb = new ExcelJS.Workbook();
-  wb.creator = 'Sistema DEAJ-INE';
+  wb.creator = 'SiCoDEAJ';
   const ws = wb.addWorksheet('Documentos', { views: [{ state: 'frozen', ySplit: 3 }] });
 
   ws.getRow(1).height = 52;

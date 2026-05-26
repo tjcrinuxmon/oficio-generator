@@ -1,5 +1,5 @@
 // =====================================================
-// app.js — Sistema de Oficios INE/DEAJ
+// app.js — SiCoDEAJ — Sistema de Control Documental DEAJ
 // =====================================================
 
 // ── Tipo activo de documento ───────────────────────
