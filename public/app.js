@@ -2,6 +2,11 @@
 // app.js — SiCoDEAJ — Sistema de Control Documental DEAJ
 // =====================================================
 
+// ── Fecha local en zona horaria CDMX ───────────────
+function cdmxToday() {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Mexico_City' }).format(new Date());
+}
+
 // ── Tipo activo de documento ───────────────────────
 let currentTipo = 'oficio';
 let currentModalAcuse = null;
@@ -409,7 +414,7 @@ async function loadNuevo() {
                 `<option value="${f.id}">${f.nombre}${f.es_titular ? ' (Titular)' : ''}</option>`
             ).join('');
         // fecha por defecto — siempre hoy, no editable
-        const todayVal = new Date().toISOString().slice(0, 10);
+        const todayVal = cdmxToday();
         document.getElementById('of-fecha').value = todayVal;
         document.getElementById('of-fecha-display').textContent = formatFecha(todayVal);
     } catch (e) {
@@ -1161,7 +1166,7 @@ document.getElementById('nuevo-oficio-form').addEventListener('submit', async e 
         document.getElementById('nuevo-oficio-form').reset();
         document.getElementById('justificacion-group').style.display = 'none';
         applyTipoToggle(currentTipo);
-        const todayAfter = new Date().toISOString().slice(0, 10);
+        const todayAfter = cdmxToday();
         document.getElementById('of-fecha').value = todayAfter;
         document.getElementById('of-fecha-display').textContent = formatFecha(todayAfter);
     } catch (ex) {
@@ -1206,7 +1211,7 @@ document.getElementById('btn-limpiar').addEventListener('click', () => {
     applyTipoToggle(currentTipo);
     document.getElementById('numero-preview').classList.add('hidden');
     document.getElementById('nuevo-error').classList.add('hidden');
-    const todayClean = new Date().toISOString().slice(0, 10);
+    const todayClean = cdmxToday();
     document.getElementById('of-fecha').value = todayClean;
     document.getElementById('of-fecha-display').textContent = formatFecha(todayClean);
 });
