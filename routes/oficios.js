@@ -132,9 +132,17 @@ router.put('/:id', (req, res) => {
     return res.status(404).json({ error: 'Oficio no encontrado' });
   }
 
-  if (estatus && ['enviado', 'archivado'].includes(estatus)) {
+  if (estatus === 'archivado') {
     const row = db.prepare(`SELECT acuse_path FROM oficios WHERE id = ?`).get(req.params.id);
-    if (!row?.acuse_path) return res.status(400).json({ error: 'Se requiere un acuse para cambiar a Enviado o Archivado' });
+    if (!row?.acuse_path) return res.status(400).json({ error: 'Se requiere un acuse para cambiar a Archivado' });
+  }
+
+  if (estatus && estatus !== 'cancelado') {
+    const current = db.prepare(`SELECT estatus FROM oficios WHERE id = ?`).get(req.params.id);
+    if (current?.estatus === 'cancelado') {
+      const razon = (req.body.razon_reactivacion || '').trim();
+      if (!razon) return res.status(400).json({ error: 'La justificación de reactivación es obligatoria' });
+    }
   }
 
   const sets = [];
@@ -188,7 +196,7 @@ router.delete('/:id/acuse', (req, res) => {
   const row = db.prepare(`SELECT acuse_path FROM oficios WHERE id = ?`).get(req.params.id);
   if (!row) return res.status(404).json({ error: 'Oficio no encontrado' });
   if (row.acuse_path && fs.existsSync(row.acuse_path)) fs.unlinkSync(row.acuse_path);
-  db.prepare(`UPDATE oficios SET acuse_path = NULL, estatus = 'enviado', actualizado_en = datetime('now','localtime') WHERE id = ?`).run(req.params.id);
+  db.prepare(`UPDATE oficios SET acuse_path = NULL, estatus = 'borrador', actualizado_en = datetime('now','localtime') WHERE id = ?`).run(req.params.id);
   res.json({ ok: true });
 });
 

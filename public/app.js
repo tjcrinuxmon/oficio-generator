@@ -217,25 +217,21 @@ async function loadDashboard() {
         // Stats oficios
         document.getElementById('of-total').textContent = ofs.length;
         document.getElementById('of-borrador').textContent = ofs.filter(o => o.estatus === 'borrador').length;
-        document.getElementById('of-enviado').textContent = ofs.filter(o => o.estatus === 'enviado').length;
         document.getElementById('of-archivado').textContent = ofs.filter(o => o.estatus === 'archivado').length;
 
         // Stats opiniones
         document.getElementById('ot-total').textContent = ots.length;
         document.getElementById('ot-borrador').textContent = ots.filter(o => o.estatus === 'borrador').length;
-        document.getElementById('ot-enviado').textContent = ots.filter(o => o.estatus === 'enviado').length;
         document.getElementById('ot-archivado').textContent = ots.filter(o => o.estatus === 'archivado').length;
 
         // Stats dictámenes
         document.getElementById('dt-total').textContent = dts.length;
         document.getElementById('dt-borrador').textContent = dts.filter(o => o.estatus === 'borrador').length;
-        document.getElementById('dt-enviado').textContent = dts.filter(o => o.estatus === 'enviado').length;
         document.getElementById('dt-archivado').textContent = dts.filter(o => o.estatus === 'archivado').length;
 
         // Stats certificaciones
         document.getElementById('ct-total').textContent = cts.length;
         document.getElementById('ct-borrador').textContent = cts.filter(o => o.estatus === 'borrador').length;
-        document.getElementById('ct-enviado').textContent = cts.filter(o => o.estatus === 'enviado').length;
         document.getElementById('ct-archivado').textContent = cts.filter(o => o.estatus === 'archivado').length;
 
         renderRecientes('dash-recientes-oficio', ofs.slice(0, 5), 'No hay oficios registrados aún.');
@@ -434,8 +430,8 @@ async function openOficioModal(id, readOnly = false) {
         const currentIsNoTitular = currentFirmante && !currentFirmante.es_titular;
 
         const estatusDisponibles = o.acuse_path
-            ? ['enviado', 'archivado', 'cancelado']
-            : ['borrador', 'enviado', 'archivado', 'cancelado'];
+            ? ['archivado', 'cancelado']
+            : ['borrador', 'archivado', 'cancelado'];
         const estatusOpts = estatusDisponibles
             .map(e => `<option value="${e}" ${o.estatus === e ? 'selected' : ''}>${labelEstatus(e)}</option>`)
             .join('');
@@ -648,8 +644,8 @@ async function saveOficioChanges(id) {
     const estatus    = document.getElementById('det-estatus')?.value;
     const firmante_id = document.getElementById('det-firmante')?.value;
 
-    if (['enviado', 'archivado'].includes(estatus) && !currentModalAcuse) {
-        toast('Debes subir el acuse antes de cambiar a este estatus', 'error');
+    if (estatus === 'archivado' && !currentModalAcuse) {
+        toast('Debes subir el acuse antes de cambiar a Archivado', 'error');
         return;
     }
 
@@ -669,9 +665,15 @@ async function saveOficioChanges(id) {
     }
 
     if (currentModalOriginalEstatus === 'cancelado' && estatus && estatus !== 'cancelado') {
-        const razon = document.getElementById('det-razon-reactivacion')?.value.trim();
+        const razonEl = document.getElementById('det-razon-reactivacion');
+        const razon = razonEl?.value?.trim() || '';
         if (!razon) {
             toast('Debes justificar el motivo de reactivación antes de guardar', 'error');
+            if (razonEl) {
+                razonEl.style.borderColor = '#ef4444';
+                razonEl.focus();
+                razonEl.addEventListener('input', () => { razonEl.style.borderColor = ''; }, { once: true });
+            }
             return;
         }
         body.razon_reactivacion = razon;
@@ -786,10 +788,10 @@ async function downloadAcuse(id) {
 }
 
 async function deleteAcuse(id) {
-    if (!confirm('¿Eliminar el acuse adjunto? El estatus regresará a Enviado.')) return;
+    if (!confirm('¿Eliminar el acuse adjunto? El estatus regresará a Borrador.')) return;
     try {
         await api('DELETE', `/oficios/${id}/acuse`);
-        toast('Acuse eliminado — estatus regresado a Enviado', 'success');
+        toast('Acuse eliminado — estatus regresado a Borrador', 'success');
         if (state.view === 'historial') loadHistorial();
         if (state.view === 'dashboard') loadDashboard();
         openOficioModal(id);
