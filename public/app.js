@@ -504,6 +504,27 @@ async function openOficioModal(id, readOnly = false) {
             : `<span class="detail-value">${o.asunto}</span>`}
         </div>
 
+        <div class="detail-item full">
+          <span class="detail-label">Síntesis</span>
+          ${isAdmin
+            ? `<textarea id="det-sintesis" class="filter-select" style="width:100%;min-height:60px;resize:vertical" placeholder="Síntesis o resumen..." maxlength="1000">${o.sintesis || ''}</textarea>`
+            : `<span class="detail-value" style="white-space:pre-wrap">${o.sintesis || '—'}</span>`}
+        </div>
+
+        <div class="detail-item full">
+          <span class="detail-label">Cuerpo del documento</span>
+          ${isAdmin
+            ? `<textarea id="det-cuerpo" class="filter-select" style="width:100%;min-height:120px;resize:vertical" placeholder="Redacta el contenido del oficio...">${o.cuerpo || ''}</textarea>`
+            : `<span class="detail-value" style="white-space:pre-wrap">${o.cuerpo || '—'}</span>`}
+        </div>
+
+        <div class="detail-item">
+          <span class="detail-label">ID SAI</span>
+          ${isAdmin
+            ? `<input type="text" id="det-id-sai" class="filter-select" style="width:100%" maxlength="100" value="${q(o.id_sai || '')}">`
+            : `<span class="detail-value">${o.id_sai || '—'}</span>`}
+        </div>
+
         <div class="detail-item">
           <span class="detail-label">Firmante</span>
           <select id="det-firmante" class="filter-select" style="width:100%">
@@ -603,6 +624,9 @@ async function openOficioModal(id, readOnly = false) {
 
       <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
         <button class="btn btn-secondary" onclick="closeModal('modal-oficio')">Cerrar</button>
+        <button class="btn btn-secondary" onclick="downloadDocx(${o.id})" title="Descargar documento Word">
+          <svg style="width:15px;height:15px;margin-right:5px;vertical-align:-2px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>Generar Word
+        </button>
         ${readOnly
           ? `<button class="btn btn-primary" onclick="closeModal('modal-oficio');openOficioModal(${o.id},false)">Editar</button>`
           : `<button class="btn btn-primary" onclick="saveOficioChanges(${o.id})">Guardar cambios</button>`
@@ -703,8 +727,15 @@ async function saveOficioChanges(id) {
         const cargo       = document.getElementById('det-cargo')?.value;
         const ur          = document.getElementById('det-url-solicitante')?.value;
 
+        const sintesis = document.getElementById('det-sintesis')?.value ?? null;
+        const cuerpo   = document.getElementById('det-cuerpo')?.value ?? null;
+        const id_sai   = document.getElementById('det-id-sai')?.value ?? null;
+
         if (fecha)       body.fecha               = fecha;
         if (asunto)      body.asunto              = asunto;
+        if (sintesis !== null) body.sintesis        = sintesis;
+        if (cuerpo   !== null) body.cuerpo         = cuerpo;
+        if (id_sai   !== null) body.id_sai         = id_sai;
         if (solicita)    body.solicita            = solicita;
         if (area)        body.area                = area;
         if (destinatario !== undefined && destinatario !== null) body.destinatario     = destinatario;
@@ -1151,6 +1182,9 @@ document.getElementById('nuevo-oficio-form').addEventListener('submit', async e 
             tipo,
             fecha: document.getElementById('of-fecha').value,
             asunto: document.getElementById('of-asunto').value,
+            sintesis: document.getElementById('of-sintesis').value || undefined,
+            cuerpo: document.getElementById('of-cuerpo').value || undefined,
+            id_sai: document.getElementById('of-id-sai').value || undefined,
             firmante_id: document.getElementById('of-firmante').value,
             solicita: document.getElementById('of-solicita').value,
             area: document.getElementById('of-area').value,
@@ -1209,6 +1243,7 @@ document.getElementById('of-firmante').addEventListener('change', function () {
 // Limpiar form nuevo oficio
 document.getElementById('btn-limpiar').addEventListener('click', () => {
     document.getElementById('nuevo-oficio-form').reset();
+    document.getElementById('of-cuerpo').value = '';
     document.getElementById('justificacion-group').style.display = 'none';
     applyTipoToggle(currentTipo);
     document.getElementById('numero-preview').classList.add('hidden');
@@ -1280,10 +1315,110 @@ document.getElementById('btn-limpiar-filtros').addEventListener('click', () => {
     loadHistorial();
 });
 
-// Exportar
+// Exportar Excel
 document.getElementById('btn-export-excel').addEventListener('click', () => {
     fetchDownload(`/api/exportar/excel?${new URLSearchParams(getHistorialFiltros())}`, 'Documentos_DEAJ.xlsx');
 });
+
+// ── Carga masiva ────────────────────────────────────
+document.getElementById('btn-carga-masiva').addEventListener('click', () => {
+    document.getElementById('carga-masiva-file').value = '';
+    document.getElementById('carga-masiva-errores').classList.add('hidden');
+    document.getElementById('carga-masiva-resultado').classList.add('hidden');
+    document.getElementById('modal-carga-masiva').classList.remove('hidden');
+});
+
+document.getElementById('modal-carga-masiva-close').addEventListener('click', () => {
+    document.getElementById('modal-carga-masiva').classList.add('hidden');
+});
+document.getElementById('btn-carga-masiva-cancelar').addEventListener('click', () => {
+    document.getElementById('modal-carga-masiva').classList.add('hidden');
+});
+
+document.getElementById('btn-descargar-plantilla').addEventListener('click', async (e) => {
+    e.preventDefault();
+    fetchDownload('/api/of/carga-masiva/plantilla', 'plantilla_carga_masiva.xlsx');
+});
+
+document.getElementById('btn-carga-masiva-subir').addEventListener('click', async () => {
+    const fileInput = document.getElementById('carga-masiva-file');
+    const erroresEl = document.getElementById('carga-masiva-errores');
+    const resultadoEl = document.getElementById('carga-masiva-resultado');
+    erroresEl.classList.add('hidden');
+    resultadoEl.classList.add('hidden');
+
+    if (!fileInput.files.length) { toast('Selecciona un archivo primero', 'error'); return; }
+
+    const btn = document.getElementById('btn-carga-masiva-subir');
+    btn.disabled = true;
+    btn.textContent = 'Procesando...';
+
+    try {
+        const fd = new FormData();
+        fd.append('archivo', fileInput.files[0]);
+        const opts = { method: 'POST', headers: { Authorization: `Bearer ${state.token}` }, body: fd };
+        const res = await fetch('/api/of/carga-masiva', opts);
+        const data = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+            if (data.errores?.length) {
+                let html = `<strong style="color:#dc2626">⚠ ${data.error}</strong><ul style="margin:8px 0 0 16px;list-style:disc">`;
+                data.errores.forEach(({ fila, errores }) => {
+                    html += `<li><strong>Fila ${fila}:</strong> ${errores.join(', ')}</li>`;
+                });
+                html += '</ul>';
+                erroresEl.innerHTML = html;
+                erroresEl.classList.remove('hidden');
+            } else {
+                toast(data.error || 'Error al procesar', 'error');
+            }
+            return;
+        }
+
+        resultadoEl.innerHTML = `<strong style="color:#16a34a">✓ ${data.creados} oficios creados exitosamente</strong>
+            <ul style="margin:8px 0 0 16px;list-style:disc;max-height:140px;overflow-y:auto">
+              ${data.numeros.map(n => `<li style="font-size:12px">${n}</li>`).join('')}
+            </ul>`;
+        resultadoEl.classList.remove('hidden');
+        fileInput.value = '';
+        toast(`${data.creados} oficios creados`, 'success');
+        loadHistorial(getHistorialFiltros());
+    } catch (e) {
+        toast(e.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '⬆ Procesar archivo';
+    }
+});
+
+// Exportar Word (oficio individual)
+async function downloadDocx(id) {
+    try {
+        const res = await fetch(`/api/exportar/docx/${id}`, {
+            headers: { Authorization: `Bearer ${state.token}` },
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: res.statusText }));
+            toast(err.error || 'Error al generar Word', 'error');
+            return;
+        }
+        const blob = await res.blob();
+        const disposition = res.headers.get('Content-Disposition') || '';
+        const match = disposition.match(/filename="([^"]+)"/);
+        const filename = match ? match[1] : `oficio_${id}.docx`;
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        toast('Documento Word generado', 'success');
+    } catch (e) {
+        toast(e.message, 'error');
+    }
+}
 
 // Botones "Nuevo" de catálogos
 document.getElementById('btn-nuevo-firmante').addEventListener('click', () => openFirmanteModal());

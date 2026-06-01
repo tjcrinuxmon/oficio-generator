@@ -2,6 +2,7 @@ const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const XLSX = require('xlsx');
 const db = require('../database');
 const { authMiddleware } = require('../middleware/auth');
 
@@ -72,7 +73,7 @@ router.get('/:id', (req, res) => {
 
 // POST /api/oficios/generar — atomic
 router.post('/generar', (req, res) => {
-  const { fecha, destinatario, cargo_destinatario, asunto, firmante_id, justificacion_firmante, razon, solicita, area, url_solicitante } = req.body;
+  const { fecha, destinatario, cargo_destinatario, asunto, cuerpo, id_sai, sintesis, firmante_id, justificacion_firmante, razon, solicita, area, url_solicitante } = req.body;
   const tipo            = ['oficio', 'opinion', 'dictamen', 'certificacion'].includes(req.body.tipo) ? req.body.tipo : 'oficio';
   const isOpinion       = tipo === 'opinion';
   const isDictamen      = tipo === 'dictamen';
@@ -106,10 +107,11 @@ router.post('/generar', (req, res) => {
     else if (isCertificacion) db.prepare(`UPDATE anios_config SET correlativo_certificacion_actual = ? WHERE id = ?`).run(nuevoCorrelativo, anioRow.id);
     else                 db.prepare(`UPDATE anios_config SET correlativo_actual = ? WHERE id = ?`).run(nuevoCorrelativo, anioRow.id);
 
-    db.prepare(`INSERT INTO oficios (numero_oficio, correlativo, anio, tipo, fecha, destinatario, cargo_destinatario, asunto, firmante_id, requiere_justificacion, justificacion_firmante, razon, solicita, area, url_solicitante, creado_por) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    db.prepare(`INSERT INTO oficios (numero_oficio, correlativo, anio, tipo, fecha, destinatario, cargo_destinatario, asunto, cuerpo, id_sai, sintesis, firmante_id, requiere_justificacion, justificacion_firmante, razon, solicita, area, url_solicitante, creado_por) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(numeroOficio, nuevoCorrelativo, anioRow.anio, tipo, fecha,
            destinatario || '', cargo_destinatario || '',
-           asunto, parseInt(firmante_id), requiereJustificacion ? 1 : 0,
+           asunto, cuerpo || null, id_sai || null, sintesis || null,
+           parseInt(firmante_id), requiereJustificacion ? 1 : 0,
            justificacion_firmante || null, razon || null, solicita, area,
            url_solicitante || null, req.user.id);
 
@@ -123,9 +125,202 @@ router.post('/generar', (req, res) => {
   }
 });
 
+// POST /api/oficios/carga-masiva
+const uploadXlsx = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (['.xlsx', '.xls', '.csv'].includes(ext)) cb(null, true);
+    else cb(new Error('Solo se permiten archivos Excel (.xlsx, .xls) o CSV'));
+  },
+});
+
+router.post('/carga-masiva', uploadXlsx.single('archivo'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Archivo requerido' });
+
+  let rows;
+  try {
+    const wb = XLSX.read(req.file.buffer, { type: 'buffer', cellDates: true });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+  } catch (e) {
+    return res.status(400).json({ error: 'No se pudo leer el archivo: ' + e.message });
+  }
+
+  if (!rows.length) return res.status(400).json({ error: 'El archivo está vacío' });
+
+  const TIPOS_VALIDOS = ['oficio', 'opinion', 'dictamen', 'certificacion'];
+  const firmantes = db.prepare('SELECT id, nombre, es_titular FROM firmantes WHERE activo = 1').all();
+
+  const errores = [];
+  const validos = [];
+
+  rows.forEach((row, i) => {
+    const fila = i + 2; // Excel row number (1 = header)
+    const tipo = (String(row.tipo || 'oficio')).trim().toLowerCase();
+    const fecha = row.fecha ? String(row.fecha).trim() : '';
+    const destinatario = String(row.destinatario || '').trim();
+    const cargo_destinatario = String(row.cargo_destinatario || '').trim();
+    const asunto = String(row.asunto || '').trim();
+    const solicita = String(row.solicita || '').trim();
+    const area = String(row.area || '').trim();
+    const firmante_nombre = String(row.firmante || '').trim();
+    const url_solicitante = String(row.url_solicitante || '').trim();
+    const cuerpo = String(row.cuerpo || '').trim();
+    const id_sai = String(row.id_sai || '').trim();
+    const sintesis = String(row.sintesis || '').trim();
+    const justificacion_firmante = String(row.justificacion_firmante || '').trim();
+    const razon = String(row.razon || '').trim();
+
+    const filaErrores = [];
+    if (!TIPOS_VALIDOS.includes(tipo)) filaErrores.push(`tipo inválido ("${tipo}")`);
+    if (!asunto) filaErrores.push('asunto vacío');
+    if (!solicita) filaErrores.push('solicita vacío');
+    if (!area) filaErrores.push('área vacía');
+
+    const isOpinion = tipo === 'opinion';
+    const isDictamen = tipo === 'dictamen';
+    if (!isOpinion && !isDictamen) {
+      if (!destinatario) filaErrores.push('destinatario vacío');
+      if (!cargo_destinatario) filaErrores.push('cargo_destinatario vacío');
+    }
+    if ((isOpinion || isDictamen) && !url_solicitante) filaErrores.push('url_solicitante vacío');
+
+    // Fecha: aceptar YYYY-MM-DD o Date de Excel
+    let fechaStr = fecha;
+    if (row.fecha instanceof Date) {
+      const d = row.fecha;
+      fechaStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    } else if (!/^\d{4}-\d{2}-\d{2}$/.test(fechaStr)) {
+      filaErrores.push('fecha inválida (use YYYY-MM-DD)');
+    }
+
+    // Firmante
+    let firmante = null;
+    if (firmante_nombre) {
+      firmante = firmantes.find(f => f.nombre.toLowerCase() === firmante_nombre.toLowerCase());
+      if (!firmante) filaErrores.push(`firmante "${firmante_nombre}" no encontrado`);
+    } else {
+      firmante = firmantes.find(f => f.es_titular === 1);
+      if (!firmante) filaErrores.push('no hay firmante titular activo');
+    }
+
+    const requiereJustificacion = firmante && !firmante.es_titular;
+    if (requiereJustificacion && !justificacion_firmante) {
+      filaErrores.push('justificacion_firmante requerida para firmante no titular');
+    }
+
+    if (filaErrores.length) {
+      errores.push({ fila, errores: filaErrores });
+    } else {
+      validos.push({
+        tipo, fecha: fechaStr, destinatario, cargo_destinatario,
+        asunto, cuerpo, id_sai, sintesis, solicita, area,
+        url_solicitante, firmante_id: firmante.id,
+        requiereJustificacion, justificacion_firmante, razon,
+      });
+    }
+  });
+
+  if (errores.length) {
+    return res.status(422).json({
+      error: `${errores.length} fila(s) con errores. Corrígelos antes de procesar.`,
+      errores,
+      total: rows.length,
+    });
+  }
+
+  // Procesar todo en una sola transacción
+  const anioRow = db.prepare(
+    'SELECT id, anio, correlativo_actual, correlativo_opinion_actual, correlativo_dictamen_actual, correlativo_certificacion_actual FROM anios_config WHERE activo = 1 LIMIT 1'
+  ).get();
+  if (!anioRow) return res.status(500).json({ error: 'No hay año activo configurado' });
+
+  const insertStmt = db.prepare(
+    `INSERT INTO oficios (numero_oficio, correlativo, anio, tipo, fecha, destinatario, cargo_destinatario,
+      asunto, cuerpo, id_sai, sintesis, firmante_id, requiere_justificacion, justificacion_firmante,
+      razon, solicita, area, url_solicitante, creado_por)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+  );
+
+  let creados;
+  try {
+    creados = db.transaction(() => {
+      const counters = {
+        correlativo_actual: anioRow.correlativo_actual,
+        correlativo_opinion_actual: anioRow.correlativo_opinion_actual,
+        correlativo_dictamen_actual: anioRow.correlativo_dictamen_actual,
+        correlativo_certificacion_actual: anioRow.correlativo_certificacion_actual,
+      };
+
+      const resultado = [];
+      for (const o of validos) {
+        let correlativo;
+        if (o.tipo === 'dictamen')      { counters.correlativo_dictamen_actual += 1; correlativo = counters.correlativo_dictamen_actual; }
+        else if (o.tipo === 'opinion')  { counters.correlativo_opinion_actual += 1;  correlativo = counters.correlativo_opinion_actual; }
+        else if (o.tipo === 'certificacion') { counters.correlativo_certificacion_actual += 1; correlativo = counters.correlativo_certificacion_actual; }
+        else                            { counters.correlativo_actual += 1; correlativo = counters.correlativo_actual; }
+
+        const numeroOficio = buildOficioNumero(correlativo, anioRow.anio, o.tipo);
+        insertStmt.run(
+          numeroOficio, correlativo, anioRow.anio, o.tipo, o.fecha,
+          o.destinatario, o.cargo_destinatario, o.asunto,
+          o.cuerpo || null, o.id_sai || null, o.sintesis || null,
+          o.firmante_id, o.requiereJustificacion ? 1 : 0,
+          o.justificacion_firmante || null, o.razon || null,
+          o.solicita, o.area, o.url_solicitante || null, req.user.id
+        );
+        resultado.push(numeroOficio);
+      }
+
+      // Actualizar correlativos de una sola vez
+      db.prepare(`UPDATE anios_config SET
+        correlativo_actual = ?,
+        correlativo_opinion_actual = ?,
+        correlativo_dictamen_actual = ?,
+        correlativo_certificacion_actual = ?
+        WHERE id = ?`
+      ).run(
+        counters.correlativo_actual, counters.correlativo_opinion_actual,
+        counters.correlativo_dictamen_actual, counters.correlativo_certificacion_actual,
+        anioRow.id
+      );
+
+      return resultado;
+    })();
+  } catch (e) {
+    return res.status(500).json({ error: 'Error al insertar: ' + e.message });
+  }
+
+  res.status(201).json({ ok: true, creados: creados.length, numeros: creados });
+});
+
+// GET /api/oficios/carga-masiva/plantilla — descarga plantilla Excel
+router.get('/carga-masiva/plantilla', (req, res) => {
+  const headers = [
+    'tipo', 'fecha', 'destinatario', 'cargo_destinatario', 'asunto',
+    'sintesis', 'cuerpo', 'id_sai', 'solicita', 'area',
+    'firmante', 'justificacion_firmante', 'razon', 'url_solicitante',
+  ];
+  const ejemplo = [{
+    tipo: 'oficio', fecha: new Date().toISOString().slice(0, 10),
+    destinatario: 'Lic. Ejemplo Apellido', cargo_destinatario: 'Director General',
+    asunto: 'Asunto del oficio de ejemplo', sintesis: '', cuerpo: '',
+    id_sai: '', solicita: 'Nombre Apellido', area: 'Dirección de Servicios Legales',
+    firmante: '', justificacion_firmante: '', razon: '', url_solicitante: '',
+  }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(ejemplo, { header: headers }), 'Oficios');
+  const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  res.setHeader('Content-Disposition', 'attachment; filename="plantilla_carga_masiva.xlsx"');
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.send(buf);
+});
+
 // PUT /api/oficios/:id
 router.put('/:id', (req, res) => {
-  const { estatus, fecha, destinatario, cargo_destinatario, asunto, firmante_id, justificacion_firmante, razon, solicita, area, url_solicitante, razon_reactivacion } = req.body;
+  const { estatus, fecha, destinatario, cargo_destinatario, asunto, cuerpo, id_sai, sintesis, firmante_id, justificacion_firmante, razon, solicita, area, url_solicitante, razon_reactivacion } = req.body;
   const ownerClause = req.user.rol !== 'admin' ? 'AND creado_por = ?' : '';
   const checkParams = req.user.rol !== 'admin' ? [req.params.id, req.user.id] : [req.params.id];
   if (!db.prepare(`SELECT id FROM oficios WHERE id = ? ${ownerClause}`).get(...checkParams)) {
@@ -167,6 +362,9 @@ router.put('/:id', (req, res) => {
   if (area)                           { sets.push('area = ?'); params.push(area); }
   if (url_solicitante !== undefined)  { sets.push('url_solicitante = ?'); params.push(url_solicitante || null); }
   if (razon_reactivacion !== undefined) { sets.push('razon_reactivacion = ?'); params.push(razon_reactivacion || null); }
+  if (cuerpo !== undefined)           { sets.push('cuerpo = ?'); params.push(cuerpo || null); }
+  if (id_sai   !== undefined)          { sets.push('id_sai = ?');   params.push(id_sai   || null); }
+  if (sintesis !== undefined)          { sets.push('sintesis = ?'); params.push(sintesis || null); }
   sets.push(`actualizado_en = datetime('now','localtime')`);
 
   if (sets.length > 1) {

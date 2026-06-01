@@ -338,8 +338,20 @@
             </div>
             <div class="form-group col-full">
               <label for="of-asunto">Asunto <span class="required">*</span></label>
-              <textarea id="of-asunto" rows="3" placeholder="Describe el asunto" maxlength="500" required></textarea>
+              <textarea id="of-asunto" rows="3" placeholder="Describe el asunto (aparecerá en el encabezado del documento)" maxlength="500" required></textarea>
               <div class="char-counter" id="of-asunto-counter"></div>
+            </div>
+            <div class="form-group col-full">
+              <label for="of-sintesis">Síntesis</label>
+              <textarea id="of-sintesis" rows="2" placeholder="Síntesis o resumen del documento" maxlength="1000"></textarea>
+            </div>
+            <div class="form-group col-full">
+              <label for="of-cuerpo">Cuerpo del documento</label>
+              <textarea id="of-cuerpo" rows="7" placeholder="Redacta el contenido del oficio (texto que aparecerá en el cuerpo del Word)..."></textarea>
+            </div>
+            <div class="form-group col-2">
+              <label for="of-id-sai">ID SAI</label>
+              <input type="text" id="of-id-sai" placeholder="Número de expediente SAI" maxlength="100" />
             </div>
             <div class="form-group col-2">
               <label for="of-firmante">Firmante <span class="required">*</span></label>
@@ -391,6 +403,7 @@
         <div class="view-header">
           <h1>Historial de Documentos</h1>
           <div class="header-actions">
+            <button class="btn btn-secondary btn-sm" id="btn-carga-masiva">⬆ Carga masiva</button>
             <button class="btn btn-secondary btn-sm" id="btn-export-excel">⬇ Excel</button>
           </div>
         </div>
@@ -562,6 +575,42 @@
       </div>
       <div class="modal-body" id="modal-body"></div>
       <div class="modal-footer" id="modal-footer"></div>
+    </div>
+  </div>
+
+  <!-- MODAL CARGA MASIVA -->
+  <div id="modal-carga-masiva" class="modal-overlay hidden">
+    <div class="modal-box" style="max-width:560px">
+      <div class="modal-header">
+        <h2>Carga masiva de oficios</h2>
+        <button class="modal-close" id="modal-carga-masiva-close">✕</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size:14px;color:var(--text-secondary,#6b7280);margin-bottom:16px">
+          Sube un archivo <strong>.xlsx</strong> o <strong>.csv</strong> con los datos de los oficios.
+          La primera fila debe ser el encabezado con los nombres de columna exactos.
+        </p>
+        <div style="margin-bottom:16px">
+          <a id="btn-descargar-plantilla" href="#" style="font-size:13px;color:var(--primary,#7c3aed);text-decoration:underline;cursor:pointer">
+            ⬇ Descargar plantilla de ejemplo
+          </a>
+        </div>
+        <div class="form-group">
+          <label for="carga-masiva-file">Archivo Excel / CSV</label>
+          <input type="file" id="carga-masiva-file" accept=".xlsx,.xls,.csv"
+            style="display:block;width:100%;padding:8px;border:1.5px solid var(--border,#e5e7eb);border-radius:8px;font-size:14px" />
+        </div>
+        <div id="carga-masiva-errores" class="hidden"
+          style="margin-top:12px;padding:12px;background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;font-size:13px;max-height:220px;overflow-y:auto">
+        </div>
+        <div id="carga-masiva-resultado" class="hidden"
+          style="margin-top:12px;padding:12px;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;font-size:13px">
+        </div>
+      </div>
+      <div class="modal-footer" style="display:flex;justify-content:flex-end;gap:10px;padding:16px 24px;border-top:1px solid var(--border,#e5e7eb)">
+        <button class="btn btn-secondary" id="btn-carga-masiva-cancelar">Cancelar</button>
+        <button class="btn btn-primary" id="btn-carga-masiva-subir">⬆ Procesar archivo</button>
+      </div>
     </div>
   </div>
 
