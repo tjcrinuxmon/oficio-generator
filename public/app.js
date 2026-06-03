@@ -489,6 +489,12 @@ async function openOficioModal(id, readOnly = false) {
           ${isAdmin
             ? `<input type="text" id="det-cargo" class="filter-select" style="width:100%" maxlength="255" value="${q(o.cargo_destinatario)}">`
             : `<span class="detail-value">${o.cargo_destinatario || '—'}</span>`}
+        </div>
+        <div class="detail-item">
+          <span class="detail-label">Institución</span>
+          ${isAdmin
+            ? `<input type="text" id="det-institucion" class="filter-select" style="width:100%" maxlength="255" placeholder="(opcional)" value="${q(o.institucion || '')}">`
+            : `<span class="detail-value">${o.institucion || '—'}</span>`}
         </div>` : `
         <div class="detail-item full">
           <span class="detail-label">Requirente</span>
@@ -724,8 +730,9 @@ async function saveOficioChanges(id) {
         const solicita    = document.getElementById('det-solicita')?.value;
         const area        = document.getElementById('det-area')?.value;
         const destinatario = document.getElementById('det-destinatario')?.value;
-        const cargo       = document.getElementById('det-cargo')?.value;
-        const ur          = document.getElementById('det-url-solicitante')?.value;
+        const cargo        = document.getElementById('det-cargo')?.value;
+        const institucion  = document.getElementById('det-institucion')?.value ?? null;
+        const ur           = document.getElementById('det-url-solicitante')?.value;
 
         const sintesis = document.getElementById('det-sintesis')?.value ?? null;
         const cuerpo   = document.getElementById('det-cuerpo')?.value ?? null;
@@ -738,9 +745,10 @@ async function saveOficioChanges(id) {
         if (id_sai   !== null) body.id_sai         = id_sai;
         if (solicita)    body.solicita            = solicita;
         if (area)        body.area                = area;
-        if (destinatario !== undefined && destinatario !== null) body.destinatario     = destinatario;
+        if (destinatario !== undefined && destinatario !== null) body.destinatario       = destinatario;
         if (cargo        !== undefined && cargo        !== null) body.cargo_destinatario = cargo;
-        if (ur           !== undefined && ur           !== null) body.url_solicitante  = ur;
+        if (institucion  !== null)                               body.institucion        = institucion;
+        if (ur           !== undefined && ur           !== null) body.url_solicitante    = ur;
     }
 
     try {
@@ -1189,6 +1197,7 @@ document.getElementById('nuevo-oficio-form').addEventListener('submit', async e 
             solicita: document.getElementById('of-solicita').value,
             area: document.getElementById('of-area').value,
             justificacion_firmante: document.getElementById('of-justificacion').value || undefined,
+            institucion: document.getElementById('of-institucion').value || undefined,
             ...(needsUR
                 ? { url_solicitante: document.getElementById('of-url-solicitante').value }
                 : { destinatario: document.getElementById('of-destinatario').value,

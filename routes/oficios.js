@@ -74,7 +74,7 @@ router.get('/:id', (req, res) => {
 
 // POST /api/oficios/generar — atomic
 router.post('/generar', (req, res) => {
-  const { fecha, destinatario, cargo_destinatario, asunto, cuerpo, id_sai, sintesis, firmante_id, justificacion_firmante, razon, solicita, area, url_solicitante } = req.body;
+  const { fecha, destinatario, cargo_destinatario, institucion, asunto, cuerpo, id_sai, sintesis, firmante_id, justificacion_firmante, razon, solicita, area, url_solicitante } = req.body;
   const tipo            = ['oficio', 'opinion', 'dictamen', 'certificacion'].includes(req.body.tipo) ? req.body.tipo : 'oficio';
   const isOpinion       = tipo === 'opinion';
   const isDictamen      = tipo === 'dictamen';
@@ -108,9 +108,9 @@ router.post('/generar', (req, res) => {
     else if (isCertificacion) db.prepare(`UPDATE anios_config SET correlativo_certificacion_actual = ? WHERE id = ?`).run(nuevoCorrelativo, anioRow.id);
     else                 db.prepare(`UPDATE anios_config SET correlativo_actual = ? WHERE id = ?`).run(nuevoCorrelativo, anioRow.id);
 
-    db.prepare(`INSERT INTO oficios (numero_oficio, correlativo, anio, tipo, fecha, destinatario, cargo_destinatario, asunto, cuerpo, id_sai, sintesis, firmante_id, requiere_justificacion, justificacion_firmante, razon, solicita, area, url_solicitante, creado_por) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    db.prepare(`INSERT INTO oficios (numero_oficio, correlativo, anio, tipo, fecha, destinatario, cargo_destinatario, institucion, asunto, cuerpo, id_sai, sintesis, firmante_id, requiere_justificacion, justificacion_firmante, razon, solicita, area, url_solicitante, creado_por) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(numeroOficio, nuevoCorrelativo, anioRow.anio, tipo, fecha,
-           destinatario || '', cargo_destinatario || '',
+           destinatario || '', cargo_destinatario || '', institucion || null,
            asunto, cuerpo || null, id_sai || null, sintesis || null,
            parseInt(firmante_id), requiereJustificacion ? 1 : 0,
            justificacion_firmante || null, razon || null, solicita, area,
@@ -387,7 +387,7 @@ router.get('/carga-masiva/plantilla', async (req, res) => {
 
 // PUT /api/oficios/:id
 router.put('/:id', (req, res) => {
-  const { estatus, fecha, destinatario, cargo_destinatario, asunto, cuerpo, id_sai, sintesis, firmante_id, justificacion_firmante, razon, solicita, area, url_solicitante, razon_reactivacion } = req.body;
+  const { estatus, fecha, destinatario, cargo_destinatario, institucion, asunto, cuerpo, id_sai, sintesis, firmante_id, justificacion_firmante, razon, solicita, area, url_solicitante, razon_reactivacion } = req.body;
   const ownerClause = req.user.rol !== 'admin' ? 'AND creado_por = ?' : '';
   const checkParams = req.user.rol !== 'admin' ? [req.params.id, req.user.id] : [req.params.id];
   if (!db.prepare(`SELECT id FROM oficios WHERE id = ? ${ownerClause}`).get(...checkParams)) {
@@ -421,6 +421,7 @@ router.put('/:id', (req, res) => {
   if (fecha)                          { sets.push('fecha = ?'); params.push(fecha); }
   if (destinatario)                   { sets.push('destinatario = ?'); params.push(destinatario); }
   if (cargo_destinatario)             { sets.push('cargo_destinatario = ?'); params.push(cargo_destinatario); }
+  if (institucion !== undefined)      { sets.push('institucion = ?'); params.push(institucion || null); }
   if (asunto)                         { sets.push('asunto = ?'); params.push(asunto); }
   if (firmante_id)                    { sets.push('firmante_id = ?'); params.push(parseInt(firmante_id)); }
   if (justificacion_firmante !== undefined) { sets.push('justificacion_firmante = ?'); params.push(justificacion_firmante || null); }

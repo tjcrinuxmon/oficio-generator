@@ -75,6 +75,10 @@ try { db.exec(`ALTER TABLE anios_config ADD COLUMN correlativo_dictamen_inicio I
 try { db.exec(`ALTER TABLE anios_config ADD COLUMN correlativo_certificacion_inicio INTEGER NOT NULL DEFAULT 1`); } catch (_) {}
 try { db.exec(`ALTER TABLE oficios ADD COLUMN url_solicitante TEXT`); } catch (_) {}
 try { db.exec(`ALTER TABLE oficios ADD COLUMN razon_reactivacion TEXT`); } catch (_) {}
+try { db.exec(`ALTER TABLE oficios ADD COLUMN cuerpo TEXT`); } catch (_) {}
+try { db.exec(`ALTER TABLE oficios ADD COLUMN id_sai TEXT`); } catch (_) {}
+try { db.exec(`ALTER TABLE oficios ADD COLUMN sintesis TEXT`); } catch (_) {}
+try { db.exec(`ALTER TABLE oficios ADD COLUMN institucion TEXT`); } catch (_) {}
 
 // Seed: default admin
 if (!db.prepare(`SELECT id FROM usuarios WHERE rol = 'admin' LIMIT 1`).get()) {
@@ -91,6 +95,7 @@ if (!db.prepare(`SELECT id FROM firmantes WHERE es_titular = 1 LIMIT 1`).get()) 
     .run('Anahí Silva Tosca', 'Titular de la DEAJ', 1);
 }
 db.prepare(`UPDATE firmantes SET nombre = 'Anahí Silva Tosca' WHERE nombre = 'Abahí Silva Tosca'`).run();
+db.prepare(`UPDATE firmantes SET cargo = 'Directora Ejecutiva de Asuntos Jurídicos' WHERE nombre = 'Anahí Silva Tosca' AND cargo != 'Directora Ejecutiva de Asuntos Jurídicos'`).run();
 
 // Normalize: documents with an acuse file should be archived
 db.prepare(`UPDATE oficios SET estatus = 'archivado' WHERE acuse_path IS NOT NULL AND acuse_path != '' AND estatus != 'archivado'`).run();

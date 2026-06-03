@@ -315,7 +315,9 @@ router.get('/docx/:id', async (req, res) => {
 
           // ── Destinatario ──
           new Paragraph({ spacing: { after: 0, line: 240 }, children: [run(recipientName, { bold: true })] }),
-          ...(recipientCargo ? [new Paragraph({ spacing: { after: 160, line: 240 }, children: [run(recipientCargo)] })] : [new Paragraph({ spacing: { after: 160 }, children: [] })]),
+          ...(recipientCargo ? [new Paragraph({ spacing: { after: o.institucion ? 0 : 160, line: 240 }, children: [run(recipientCargo)] })] : []),
+          ...(o.institucion   ? [new Paragraph({ spacing: { after: 160, line: 240 }, children: [run(o.institucion)] })] : []),
+          ...(!recipientCargo && !o.institucion ? [new Paragraph({ spacing: { after: 160 }, children: [] })] : []),
 
           empty(),
 
