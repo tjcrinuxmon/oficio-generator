@@ -330,7 +330,7 @@ router.get('/docx/:id', async (req, res) => {
           empty(240), empty(240), empty(240),
 
           // ── Firmante ──
-          p([{ text: o.firmante_nombre || '', bold: true }]),
+          p([{ text: o.firmante_nombre || '', bold: true }], AlignmentType.LEFT, 0),
           new Paragraph({
             spacing: { after: 160 },
             children: [
