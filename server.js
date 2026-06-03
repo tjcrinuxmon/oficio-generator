@@ -14,6 +14,7 @@ app.use(cors({
   origin: process.env.ALLOWED_ORIGIN || 'http://localhost:3000',
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+  exposedHeaders: ['Content-Disposition', 'Content-Length'],
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
