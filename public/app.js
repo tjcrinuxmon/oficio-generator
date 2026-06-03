@@ -1356,7 +1356,7 @@ function applySaiModoToggle() {
     const modo = document.getElementById('of-sai-modo').value;
     const idInput = document.getElementById('of-id-sai');
     const justInput = document.getElementById('of-justificacion-sai');
-    document.getElementById('of-id-sai-group').style.display      = modo === 'tengo'     ? '' : 'none';
+    idInput.style.display                                         = modo === 'tengo'     ? '' : 'none';
     document.getElementById('of-sai-despues-group').style.display = modo === 'despues'   ? '' : 'none';
     document.getElementById('of-just-sai-group').style.display    = modo === 'no_aplica' ? '' : 'none';
     idInput.required = modo === 'tengo';
