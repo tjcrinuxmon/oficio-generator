@@ -39,6 +39,45 @@ function esFilaPlantilla(row) {
   return false;
 }
 
+// Construye un Excel de "acuse" de la carga: cada fila procesada con su numero_oficio asignado.
+// Devuelve el contenido en base64 para mandarlo en la respuesta JSON.
+async function construirExcelResultadoCarga(validos, numeros) {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('Oficios generados');
+  ws.columns = [
+    { header: 'numero_oficio',             key: 'numero_oficio', width: 22 },
+    { header: 'tipo',                       key: 'tipo',          width: 14 },
+    { header: 'fecha',                      key: 'fecha',         width: 14 },
+    { header: 'destinatario / requirente',  key: 'destinatario',  width: 34 },
+    { header: 'asunto',                     key: 'asunto',        width: 42 },
+    { header: 'solicita',                   key: 'solicita',      width: 26 },
+    { header: 'area',                       key: 'area',          width: 36 },
+    { header: 'id_sai',                     key: 'id_sai',        width: 14 },
+  ];
+  const hRow = ws.getRow(1);
+  hRow.height = 20;
+  hRow.eachCell(cell => {
+    cell.font      = { bold: true, color: { argb: 'FFFFFFFF' }, size: 10 };
+    cell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF7C2D92' } };
+    cell.alignment = { vertical: 'middle', horizontal: 'center' };
+  });
+  validos.forEach((o, i) => {
+    const r = ws.addRow({
+      numero_oficio: numeros[i],
+      tipo:          o.tipo,
+      fecha:         o.fecha,
+      destinatario:  o.destinatario || o.url_solicitante || '',
+      asunto:        o.asunto,
+      solicita:      o.solicita,
+      area:          o.area,
+      id_sai:        o.id_sai || '',
+    });
+    r.getCell('numero_oficio').font = { bold: true, color: { argb: 'FF15803D' } };
+  });
+  const buf = await wb.xlsx.writeBuffer();
+  return Buffer.from(buf).toString('base64');
+}
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, path.join(__dirname, '../uploads')),
   filename: (req, file, cb) => cb(null, `acuse_${req.params.id}_${Date.now()}.pdf`),
@@ -181,7 +220,7 @@ const uploadXlsx = multer({
   },
 });
 
-router.post('/carga-masiva', uploadXlsx.single('archivo'), (req, res) => {
+router.post('/carga-masiva', uploadXlsx.single('archivo'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Archivo requerido' });
 
   let rows;
@@ -350,7 +389,14 @@ router.post('/carga-masiva', uploadXlsx.single('archivo'), (req, res) => {
     return res.status(500).json({ error: 'Error al insertar: ' + e.message });
   }
 
-  res.status(201).json({ ok: true, creados: creados.length, numeros: creados });
+  let resultadoB64 = null;
+  try {
+    resultadoB64 = await construirExcelResultadoCarga(validos, creados);
+  } catch (e) {
+    console.error('[carga-masiva] no se pudo generar el Excel de resultado:', e.message);
+  }
+
+  res.status(201).json({ ok: true, creados: creados.length, numeros: creados, resultado_b64: resultadoB64 });
 });
 
 // GET /api/oficios/carga-masiva/plantilla — descarga plantilla Excel

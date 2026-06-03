@@ -584,9 +584,11 @@ async function openOficioModal(id, readOnly = false) {
         <div class="detail-item">
           <span class="detail-label">ID SAI ${saiBadge(o)}</span>
           ${!readOnly
-            ? `<input type="text" id="det-id-sai" class="filter-select" style="width:100%" maxlength="10" pattern="\\d{1,10}" inputmode="numeric" placeholder="Número de expediente SAI" oninput="this.value=this.value.replace(/[^0-9]/g,'')" value="${q(o.id_sai || '')}">
-               <label class="detail-label" style="margin-top:8px">Justificación (si el SAI no aplica)</label>
-               <textarea id="det-justificacion-sai" class="filter-select" style="width:100%;min-height:56px;resize:vertical" maxlength="500" placeholder="Si este oficio no requiere ID SAI, explica por qué (deja el ID SAI vacío)">${o.justificacion_sai || ''}</textarea>`
+            ? `<input type="text" id="det-id-sai" class="filter-select" style="width:100%" maxlength="10" pattern="\\d{1,10}" inputmode="numeric" placeholder="Número de expediente SAI" oninput="this.value=this.value.replace(/[^0-9]/g,''); document.getElementById('det-just-sai-wrap').style.display=this.value?'none':''" value="${q(o.id_sai || '')}">
+               <div id="det-just-sai-wrap" style="${o.id_sai ? 'display:none' : ''}">
+                 <label class="detail-label" style="margin-top:8px">Justificación (si el SAI no aplica)</label>
+                 <textarea id="det-justificacion-sai" class="filter-select" style="width:100%;min-height:56px;resize:vertical" maxlength="500" placeholder="Si este oficio no requiere ID SAI, explica por qué (deja el ID SAI vacío)">${o.justificacion_sai || ''}</textarea>
+               </div>`
             : `<span class="detail-value">${o.id_sai || (o.justificacion_sai ? 'No aplica — ' + o.justificacion_sai : '—')}</span>`}
         </div>
 
@@ -1458,10 +1460,21 @@ document.getElementById('btn-export-excel').addEventListener('click', () => {
 });
 
 // ── Carga masiva ────────────────────────────────────
-document.getElementById('btn-carga-masiva').addEventListener('click', () => {
+// Restaura el modal a su estado inicial (para abrir o para procesar otro archivo)
+function resetCargaMasivaModal() {
     document.getElementById('carga-masiva-file').value = '';
     document.getElementById('carga-masiva-errores').classList.add('hidden');
     document.getElementById('carga-masiva-resultado').classList.add('hidden');
+    document.getElementById('carga-masiva-form').style.display = '';
+    const btnSubir = document.getElementById('btn-carga-masiva-subir');
+    btnSubir.style.display = '';
+    btnSubir.disabled = false;
+    btnSubir.textContent = '⬆ Procesar archivo';
+    document.getElementById('btn-carga-masiva-cancelar').textContent = 'Cancelar';
+}
+
+document.getElementById('btn-carga-masiva').addEventListener('click', () => {
+    resetCargaMasivaModal();
     document.getElementById('modal-carga-masiva').classList.remove('hidden');
 });
 
@@ -1512,12 +1525,22 @@ document.getElementById('btn-carga-masiva-subir').addEventListener('click', asyn
             return;
         }
 
+        const descargaResultado = data.resultado_b64
+            ? `<a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,${data.resultado_b64}"
+                  download="oficios_generados.xlsx" class="btn btn-secondary btn-sm"
+                  style="margin-top:12px;display:inline-block">⬇ Descargar Excel con los números de oficio</a>`
+            : '';
         resultadoEl.innerHTML = `<strong style="color:#16a34a">✓ ${data.creados} oficios creados exitosamente</strong>
             <ul style="margin:8px 0 0 16px;list-style:disc;max-height:140px;overflow-y:auto">
               ${data.numeros.map(n => `<li style="font-size:12px">${n}</li>`).join('')}
-            </ul>`;
+            </ul>
+            ${descargaResultado}
+            <p style="margin-top:10px;font-size:12px;color:#6b7280">Para procesar otro archivo, cierra y vuelve a abrir esta ventana.</p>`;
         resultadoEl.classList.remove('hidden');
-        fileInput.value = '';
+        // Éxito: ocultar el formulario y el botón Procesar para evitar reenvíos confusos.
+        document.getElementById('carga-masiva-form').style.display = 'none';
+        btn.style.display = 'none';
+        document.getElementById('btn-carga-masiva-cancelar').textContent = 'Cerrar';
         toast(`${data.creados} oficios creados`, 'success');
         loadHistorial(getHistorialFiltros());
     } catch (e) {

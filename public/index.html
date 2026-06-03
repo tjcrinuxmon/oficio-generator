@@ -631,19 +631,21 @@
         <button class="modal-close" id="modal-carga-masiva-close">✕</button>
       </div>
       <div class="modal-body">
-        <p style="font-size:14px;color:var(--text-secondary,#6b7280);margin-bottom:16px">
-          Sube un archivo <strong>.xlsx</strong> o <strong>.csv</strong> con los datos de los oficios.
-          La primera fila debe ser el encabezado con los nombres de columna exactos.
-        </p>
-        <div style="margin-bottom:16px">
-          <a id="btn-descargar-plantilla" href="#" style="font-size:13px;color:var(--primary,#7c3aed);text-decoration:underline;cursor:pointer">
-            ⬇ Descargar plantilla de ejemplo
-          </a>
-        </div>
-        <div class="form-group">
-          <label for="carga-masiva-file">Archivo Excel / CSV</label>
-          <input type="file" id="carga-masiva-file" accept=".xlsx,.xls,.csv"
-            style="display:block;width:100%;padding:8px;border:1.5px solid var(--border,#e5e7eb);border-radius:8px;font-size:14px" />
+        <div id="carga-masiva-form">
+          <p style="font-size:14px;color:var(--text-secondary,#6b7280);margin-bottom:16px">
+            Sube un archivo <strong>.xlsx</strong> o <strong>.csv</strong> con los datos de los oficios.
+            La primera fila debe ser el encabezado con los nombres de columna exactos.
+          </p>
+          <div style="margin-bottom:16px">
+            <a id="btn-descargar-plantilla" href="#" style="font-size:13px;color:var(--primary,#7c3aed);text-decoration:underline;cursor:pointer">
+              ⬇ Descargar plantilla de ejemplo
+            </a>
+          </div>
+          <div class="form-group">
+            <label for="carga-masiva-file">Archivo Excel / CSV</label>
+            <input type="file" id="carga-masiva-file" accept=".xlsx,.xls,.csv"
+              style="display:block;width:100%;padding:8px;border:1.5px solid var(--border,#e5e7eb);border-radius:8px;font-size:14px" />
+          </div>
         </div>
         <div id="carga-masiva-errores" class="hidden"
           style="margin-top:12px;padding:12px;background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;font-size:13px;max-height:220px;overflow-y:auto">
