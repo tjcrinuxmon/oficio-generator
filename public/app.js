@@ -1258,6 +1258,7 @@ document.getElementById('nuevo-oficio-form').addEventListener('submit', async e 
         };
         const oficio = await api('POST', '/oficios/generar', body);
         document.getElementById('numero-generado').textContent = oficio.numero_oficio;
+        document.getElementById('btn-generar-word').dataset.id = oficio.id;
         document.getElementById('numero-preview').classList.remove('hidden');
         const label = isDictamen ? 'Dictamen' : isCertificacion ? 'Certificación' : isOpinion ? 'Opinión Técnica' : 'Oficio';
         toast(`${label} ${oficio.numero_oficio} generado`, 'success');
@@ -1454,6 +1455,11 @@ document.getElementById('btn-carga-masiva-subir').addEventListener('click', asyn
 });
 
 // Exportar Word (oficio individual)
+function downloadDocxFromForm() {
+    const id = document.getElementById('btn-generar-word').dataset.id;
+    if (id) downloadDocx(id);
+}
+
 async function downloadDocx(id) {
     try {
         const res = await fetch(`/api/exportar/docx/${id}`, {
