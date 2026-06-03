@@ -298,24 +298,29 @@ router.post('/carga-masiva', uploadXlsx.single('archivo'), (req, res) => {
 
 // GET /api/oficios/carga-masiva/plantilla — descarga plantilla Excel
 router.get('/carga-masiva/plantilla', (req, res) => {
-  const headers = [
-    'tipo', 'fecha', 'destinatario', 'cargo_destinatario', 'asunto',
-    'sintesis', 'cuerpo', 'id_sai', 'solicita', 'area',
-    'firmante', 'justificacion_firmante', 'razon', 'url_solicitante',
-  ];
-  const ejemplo = [{
-    tipo: 'oficio', fecha: new Date().toISOString().slice(0, 10),
-    destinatario: 'Lic. Ejemplo Apellido', cargo_destinatario: 'Director General',
-    asunto: 'Asunto del oficio de ejemplo', sintesis: '', cuerpo: '',
-    id_sai: '', solicita: 'Nombre Apellido', area: 'Dirección de Servicios Legales',
-    firmante: '', justificacion_firmante: '', razon: '', url_solicitante: '',
-  }];
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(ejemplo, { header: headers }), 'Oficios');
-  const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
-  res.setHeader('Content-Disposition', 'attachment; filename="plantilla_carga_masiva.xlsx"');
-  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-  res.send(buf);
+  try {
+    const headers = [
+      'tipo', 'fecha', 'destinatario', 'cargo_destinatario', 'asunto',
+      'sintesis', 'cuerpo', 'id_sai', 'solicita', 'area',
+      'firmante', 'justificacion_firmante', 'razon', 'url_solicitante',
+    ];
+    const ejemplo = [{
+      tipo: 'oficio', fecha: new Date().toISOString().slice(0, 10),
+      destinatario: 'Lic. Ejemplo Apellido', cargo_destinatario: 'Director General',
+      asunto: 'Asunto del oficio de ejemplo', sintesis: '', cuerpo: '',
+      id_sai: '', solicita: 'Nombre Apellido', area: 'Dirección de Servicios Legales',
+      firmante: '', justificacion_firmante: '', razon: '', url_solicitante: '',
+    }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(ejemplo, { header: headers }), 'Oficios');
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    res.setHeader('Content-Disposition', 'attachment; filename="plantilla_carga_masiva.xlsx"');
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.send(buf);
+  } catch (e) {
+    console.error('Error generando plantilla:', e.message);
+    res.status(500).json({ error: 'Error al generar la plantilla: ' + e.message });
+  }
 });
 
 // PUT /api/oficios/:id
