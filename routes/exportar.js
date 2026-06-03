@@ -330,7 +330,7 @@ router.get('/docx/:id', async (req, res) => {
             spacing: { after: 160 },
             children: [
               run(o.firmante_cargo || ''),
-              new FootnoteReferenceRun({ id: 1 }),
+              new FootnoteReferenceRun(1),
             ],
           }),
 
