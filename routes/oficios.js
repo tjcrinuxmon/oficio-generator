@@ -167,7 +167,7 @@ router.post('/carga-masiva', uploadXlsx.single('archivo'), (req, res) => {
     const solicita = String(row.solicita || '').trim();
     const area = String(row.area || '').trim();
     const firmante_nombre = String(row.firmante || '').trim();
-    const url_solicitante = String(row.url_solicitante || '').trim();
+    const url_solicitante = String(row.solicitante || row.url_solicitante || '').trim();
     const cuerpo = String(row.cuerpo || '').trim();
     const id_sai = String(row.id_sai || '').trim();
     const sintesis = String(row.sintesis || '').trim();
@@ -186,7 +186,7 @@ router.post('/carga-masiva', uploadXlsx.single('archivo'), (req, res) => {
       if (!destinatario) filaErrores.push('destinatario vacío');
       if (!cargo_destinatario) filaErrores.push('cargo_destinatario vacío');
     }
-    if ((isOpinion || isDictamen) && !url_solicitante) filaErrores.push('url_solicitante vacío');
+    if ((isOpinion || isDictamen) && !url_solicitante) filaErrores.push('columna solicitante vacía');
 
     // Fecha: aceptar YYYY-MM-DD o Date de Excel
     let fechaStr = fecha;
@@ -318,7 +318,7 @@ router.get('/carga-masiva/plantilla', async (req, res) => {
       { key: 'firmante',               header: 'firmante',               width: 28 },
       { key: 'justificacion_firmante', header: 'justificacion_firmante', width: 26 },
       { key: 'razon',                  header: 'razon',                  width: 20 },
-      { key: 'url_solicitante',        header: 'url_solicitante',        width: 36 },
+      { key: 'url_solicitante',        header: 'solicitante',             width: 36 },
     ];
 
     const wb = new ExcelJS.Workbook();
