@@ -10,6 +10,35 @@ const { authMiddleware } = require('../middleware/auth');
 const router = express.Router();
 router.use(authMiddleware);
 
+// ── Plantilla carga masiva: textos centinela compartidos por generación y parseo.
+// Se usan para (a) construir las filas de ayuda y (b) saltarlas al re-subir la plantilla.
+const PLANTILLA = {
+  notaTipo: 'oficio | opinion | dictamen | certificacion', // fila de notas, columna "tipo"
+  leyenda: '* = obligatorio — los demás son opcionales',    // fila de leyenda
+  ejemploDestinatario: 'Lic. Ejemplo Apellido',             // fila de ejemplo, columna "destinatario"
+  ejemploAsunto: 'Asunto del oficio de ejemplo',            // fila de ejemplo, columna "asunto"
+};
+
+// Quita el sufijo " *" (obligatorio) y espacios de los encabezados al parsear,
+// para que las claves coincidan con los nombres que espera el código.
+function normalizarFila(row) {
+  const limpia = {};
+  for (const k of Object.keys(row)) {
+    limpia[String(k).replace(/\s*\*\s*$/, '').trim()] = row[k];
+  }
+  return limpia;
+}
+
+// True si la fila es una de las filas de ayuda de la plantilla (notas/leyenda/ejemplo).
+function esFilaPlantilla(row) {
+  const tipo = String(row.tipo || '').trim();
+  if (tipo === PLANTILLA.notaTipo) return true;            // fila de notas
+  if (tipo.startsWith('* = obligatorio')) return true;      // fila de leyenda
+  if (String(row.destinatario || '').trim() === PLANTILLA.ejemploDestinatario &&
+      String(row.asunto || '').trim() === PLANTILLA.ejemploAsunto) return true; // fila de ejemplo
+  return false;
+}
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, path.join(__dirname, '../uploads')),
   filename: (req, file, cb) => cb(null, `acuse_${req.params.id}_${Date.now()}.pdf`),
@@ -169,8 +198,10 @@ router.post('/carga-masiva', uploadXlsx.single('archivo'), (req, res) => {
   const errores = [];
   const validos = [];
 
-  rows.forEach((row, i) => {
+  rows.forEach((rawRow, i) => {
     const fila = i + 2; // Excel row number (1 = header)
+    const row = normalizarFila(rawRow);
+    if (esFilaPlantilla(row)) return; // saltar filas de ayuda (notas/leyenda/ejemplo)
     const tipo = (String(row.tipo || 'oficio')).trim().toLowerCase();
     const fecha = row.fecha ? String(row.fecha).trim() : '';
     const destinatario = String(row.destinatario || '').trim();
@@ -191,6 +222,7 @@ router.post('/carga-masiva', uploadXlsx.single('archivo'), (req, res) => {
     if (!asunto) filaErrores.push('asunto vacío');
     if (!solicita) filaErrores.push('solicita vacío');
     if (!area) filaErrores.push('área vacía');
+    if (!sintesis) filaErrores.push('síntesis vacía');
 
     const isOpinion = tipo === 'opinion';
     const isDictamen = tipo === 'dictamen';
@@ -242,6 +274,10 @@ router.post('/carga-masiva', uploadXlsx.single('archivo'), (req, res) => {
       errores,
       total: rows.length,
     });
+  }
+
+  if (!validos.length) {
+    return res.status(400).json({ error: 'El archivo no contiene filas de datos. Llena la plantilla debajo de la fila de ejemplo.' });
   }
 
   // Procesar todo en una sola transacción
@@ -325,26 +361,26 @@ router.get('/carga-masiva/plantilla', async (req, res) => {
       { key: 'asunto',                 header: 'asunto *',                      width: 42,  req: true },
       { key: 'solicita',               header: 'solicita *',                    width: 26,  req: true },
       { key: 'col_area',               header: 'area *',                        width: 36,  req: true },
+      { key: 'sintesis',               header: 'sintesis *',                    width: 22,  req: true },
       { key: 'firmante',               header: 'firmante',                      width: 28,  req: false },
-      { key: 'sintesis',               header: 'sintesis',                      width: 22,  req: false },
       { key: 'cuerpo',                 header: 'cuerpo',                        width: 30,  req: false },
       { key: 'id_sai',                 header: 'id_sai',                        width: 12,  req: false },
       { key: 'justificacion_firmante', header: 'justificacion_firmante',        width: 26,  req: false },
       { key: 'razon',                  header: 'razon',                         width: 20,  req: false },
-      { key: 'url_solicitante',        header: 'solicitante (opinion/dictamen)',width: 36,  req: false },
+      { key: 'url_solicitante',        header: 'solicitante',                   width: 36,  req: false },
     ];
 
     // Notas descriptivas por columna (fila 2)
     const NOTAS = [
-      'oficio | opinion | dictamen | certificacion',
+      PLANTILLA.notaTipo,
       'YYYY-MM-DD  (ej. 2026-06-03)',
       'Nombre del destinatario (oficio/certif.)',
       'Cargo del destinatario (oficio/certif.)',
       'Texto del asunto',
       'Nombre de quien solicita',
       'Área que genera el oficio',
-      'Nombre del firmante (vacío = titular)',
       'Síntesis o resumen',
+      'Nombre del firmante (vacío = titular)',
       'Cuerpo del documento',
       'Número SAI (máx. 10 dígitos)',
       'Solo si el firmante no es el titular',
@@ -385,7 +421,7 @@ router.get('/carga-masiva/plantilla', async (req, res) => {
     });
 
     // Leyenda en celda A3
-    ws.addRow(['* = obligatorio — los demás son opcionales']);
+    ws.addRow([PLANTILLA.leyenda]);
     const legRow = ws.getRow(3);
     legRow.height = 16;
     legRow.getCell(1).font = { bold: true, color: { argb: 'FF7C2D92' }, size: 9 };
@@ -396,13 +432,13 @@ router.get('/carga-masiva/plantilla', async (req, res) => {
     ws.addRow({
       tipo:                'oficio',
       fecha:               new Date().toISOString().slice(0, 10),
-      destinatario:        'Lic. Ejemplo Apellido',
+      destinatario:        PLANTILLA.ejemploDestinatario,
       cargo_destinatario:  'Director General',
-      asunto:              'Asunto del oficio de ejemplo',
+      asunto:              PLANTILLA.ejemploAsunto,
       solicita:            'Nombre Apellido',
       col_area:            'Dirección de Servicios Legales',
+      sintesis:            'Resumen breve del contenido del oficio',
       firmante:            primerFirmante,
-      sintesis:            '',
       cuerpo:              '',
       id_sai:              '',
       justificacion_firmante: '',
@@ -425,9 +461,9 @@ router.get('/carga-masiva/plantilla', async (req, res) => {
       formulae: ['"oficio,opinion,dictamen,certificacion"'],
     });
 
-    // Validación: firmante (columna H) — referencia a la hoja oculta
+    // Validación: firmante (columna I) — referencia a la hoja oculta
     if (firmanteNames.length > 0) {
-      ws.dataValidations.add('H5:H1000', {
+      ws.dataValidations.add('I5:I1000', {
         type: 'list',
         allowBlank: true,
         showErrorMessage: true,
