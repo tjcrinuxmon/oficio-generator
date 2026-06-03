@@ -276,13 +276,13 @@ router.get('/docx/:id', async (req, res) => {
               borders: NO_BORDERS,
               rows: [new TableRow({ children: [
                 new TableCell({
-                  width: { size: 85, type: WidthType.PERCENTAGE },
+                  width: { size: 74, type: WidthType.PERCENTAGE },
                   borders: CELL_NO_B,
                   verticalAlign: VerticalAlign.BOTTOM,
                   children: [new Paragraph({ spacing: { after: 0 }, children: [run('1 de 1', { size: PT9 })] })],
                 }),
                 new TableCell({
-                  width: { size: 15, type: WidthType.PERCENTAGE },
+                  width: { size: 26, type: WidthType.PERCENTAGE },
                   borders: { top: NO_B, bottom: NO_B, left: { style: BorderStyle.SINGLE, size: 12, color: 'E4007B' }, right: NO_B },
                   margins: { top: 20, bottom: 20, left: 120, right: 20 },
                   verticalAlign: VerticalAlign.TOP,
