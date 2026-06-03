@@ -503,6 +503,34 @@ async function openOficioModal(id, readOnly = false) {
             : `<span class="detail-value">${o.url_solicitante || '—'}</span>`}
         </div>`}
 
+        <div class="detail-item" style="grid-column:1/-1;border-top:1px solid var(--border,#e5e7eb);margin-top:4px;padding-top:8px;">
+          <span class="detail-label" style="font-size:11px;color:var(--text-muted);">Revisó / Elaboró (opcional — si vacío usa firmante/solicita)</span>
+        </div>
+        <div class="detail-item">
+          <span class="detail-label">Nombre — Revisó</span>
+          ${isAdmin
+            ? `<input type="text" id="det-reviso-nombre" class="filter-select" style="width:100%" maxlength="255" placeholder="(usa firmante si vacío)" value="${q(o.reviso_nombre || '')}">`
+            : `<span class="detail-value">${o.reviso_nombre || o.firmante_nombre || '—'}</span>`}
+        </div>
+        <div class="detail-item">
+          <span class="detail-label">Puesto — Revisó</span>
+          ${isAdmin
+            ? `<input type="text" id="det-reviso-puesto" class="filter-select" style="width:100%" maxlength="255" placeholder="(usa cargo firmante si vacío)" value="${q(o.reviso_puesto || '')}">`
+            : `<span class="detail-value">${o.reviso_puesto || o.firmante_cargo || '—'}</span>`}
+        </div>
+        <div class="detail-item">
+          <span class="detail-label">Nombre — Elaboró</span>
+          ${isAdmin
+            ? `<input type="text" id="det-elaboro-nombre" class="filter-select" style="width:100%" maxlength="255" placeholder="(usa solicita si vacío)" value="${q(o.elaboro_nombre || '')}">`
+            : `<span class="detail-value">${o.elaboro_nombre || o.solicita || '—'}</span>`}
+        </div>
+        <div class="detail-item">
+          <span class="detail-label">Puesto — Elaboró</span>
+          ${isAdmin
+            ? `<input type="text" id="det-elaboro-puesto" class="filter-select" style="width:100%" maxlength="255" placeholder="(usa área si vacío)" value="${q(o.elaboro_puesto || '')}">`
+            : `<span class="detail-value">${o.elaboro_puesto || o.area || '—'}</span>`}
+        </div>
+
         <div class="detail-item full">
           <span class="detail-label">Asunto</span>
           ${isAdmin
@@ -747,7 +775,15 @@ async function saveOficioChanges(id) {
         if (area)        body.area                = area;
         if (destinatario !== undefined && destinatario !== null) body.destinatario       = destinatario;
         if (cargo        !== undefined && cargo        !== null) body.cargo_destinatario = cargo;
-        if (institucion  !== null)                               body.institucion        = institucion;
+        if (institucion    !== null) body.institucion    = institucion;
+        const reviso_nombre  = document.getElementById('det-reviso-nombre')?.value  ?? null;
+        const reviso_puesto  = document.getElementById('det-reviso-puesto')?.value  ?? null;
+        const elaboro_nombre = document.getElementById('det-elaboro-nombre')?.value ?? null;
+        const elaboro_puesto = document.getElementById('det-elaboro-puesto')?.value ?? null;
+        if (reviso_nombre  !== null) body.reviso_nombre  = reviso_nombre;
+        if (reviso_puesto  !== null) body.reviso_puesto  = reviso_puesto;
+        if (elaboro_nombre !== null) body.elaboro_nombre = elaboro_nombre;
+        if (elaboro_puesto !== null) body.elaboro_puesto = elaboro_puesto;
         if (ur           !== undefined && ur           !== null) body.url_solicitante    = ur;
     }
 
@@ -1197,7 +1233,11 @@ document.getElementById('nuevo-oficio-form').addEventListener('submit', async e 
             solicita: document.getElementById('of-solicita').value,
             area: document.getElementById('of-area').value,
             justificacion_firmante: document.getElementById('of-justificacion').value || undefined,
-            institucion: document.getElementById('of-institucion').value || undefined,
+            institucion:    document.getElementById('of-institucion').value    || undefined,
+            reviso_nombre:  document.getElementById('of-reviso-nombre').value  || undefined,
+            reviso_puesto:  document.getElementById('of-reviso-puesto').value  || undefined,
+            elaboro_nombre: document.getElementById('of-elaboro-nombre').value || undefined,
+            elaboro_puesto: document.getElementById('of-elaboro-puesto').value || undefined,
             ...(needsUR
                 ? { url_solicitante: document.getElementById('of-url-solicitante').value }
                 : { destinatario: document.getElementById('of-destinatario').value,

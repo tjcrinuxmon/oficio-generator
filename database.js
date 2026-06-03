@@ -79,6 +79,10 @@ try { db.exec(`ALTER TABLE oficios ADD COLUMN cuerpo TEXT`); } catch (_) {}
 try { db.exec(`ALTER TABLE oficios ADD COLUMN id_sai TEXT`); } catch (_) {}
 try { db.exec(`ALTER TABLE oficios ADD COLUMN sintesis TEXT`); } catch (_) {}
 try { db.exec(`ALTER TABLE oficios ADD COLUMN institucion TEXT`); } catch (_) {}
+try { db.exec(`ALTER TABLE oficios ADD COLUMN reviso_nombre TEXT`); } catch (_) {}
+try { db.exec(`ALTER TABLE oficios ADD COLUMN reviso_puesto TEXT`); } catch (_) {}
+try { db.exec(`ALTER TABLE oficios ADD COLUMN elaboro_nombre TEXT`); } catch (_) {}
+try { db.exec(`ALTER TABLE oficios ADD COLUMN elaboro_puesto TEXT`); } catch (_) {}
 
 // Seed: default admin
 if (!db.prepare(`SELECT id FROM usuarios WHERE rol = 'admin' LIMIT 1`).get()) {

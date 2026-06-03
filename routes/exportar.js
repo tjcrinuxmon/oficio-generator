@@ -284,7 +284,7 @@ router.get('/docx/:id', async (req, res) => {
                 new TableCell({
                   width: { size: 15, type: WidthType.PERCENTAGE },
                   borders: { top: NO_B, bottom: NO_B, left: { style: BorderStyle.SINGLE, size: 12, color: 'E4007B' }, right: NO_B },
-                  margins: { top: 20, bottom: 20, left: 20, right: 20 },
+                  margins: { top: 20, bottom: 20, left: 120, right: 20 },
                   verticalAlign: VerticalAlign.TOP,
                   children: [
                     new Paragraph({ spacing: { after: 0, line: 200 }, children: [new TextRun({ text: 'Oficina de partes:', font: 'Myriad Pro Cond', size: PT8, bold: true })] }),
@@ -387,8 +387,8 @@ router.get('/docx/:id', async (req, res) => {
             width: { size: 85, type: WidthType.PERCENTAGE },
             rows: [
               vreRow('Validó',  o.firmante_nombre, o.firmante_cargo),
-              vreRow('Revisó',  o.firmante_nombre, o.firmante_cargo),
-              vreRow('Elaboró', o.solicita,        o.area),
+              vreRow('Revisó',  o.reviso_nombre  || o.firmante_nombre, o.reviso_puesto  || o.firmante_cargo),
+              vreRow('Elaboró', o.elaboro_nombre || o.solicita,        o.elaboro_puesto || o.area),
             ],
           }),
 
