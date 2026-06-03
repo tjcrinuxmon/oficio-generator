@@ -81,6 +81,7 @@ router.post('/generar', (req, res) => {
   const isCertificacion = tipo === 'certificacion';
 
   if (!fecha || !asunto || !firmante_id || !solicita || !area) return res.status(400).json({ error: 'Todos los campos obligatorios son requeridos' });
+  if (id_sai && (!/^\d+$/.test(String(id_sai).trim()) || String(id_sai).trim().length > 10)) return res.status(400).json({ error: 'El ID SAI debe ser numérico y tener máximo 10 dígitos' });
   if (!isOpinion && !isDictamen && (!destinatario || !cargo_destinatario)) return res.status(400).json({ error: 'Todos los campos obligatorios son requeridos' });
   if ((isOpinion || isDictamen) && !url_solicitante) return res.status(400).json({ error: 'Todos los campos obligatorios son requeridos' });
 
