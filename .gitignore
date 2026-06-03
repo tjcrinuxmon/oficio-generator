@@ -6,3 +6,11 @@ uploads/
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
+*.db
+
+# Archivos de prueba y temporales de Word
+test_*.docx
+~$*.docx
+
+# Repo anidado abandonado
+oficio-generador/
