@@ -79,6 +79,7 @@ try { db.exec(`ALTER TABLE oficios ADD COLUMN cuerpo TEXT`); } catch (_) {}
 try { db.exec(`ALTER TABLE oficios ADD COLUMN id_sai TEXT`); } catch (_) {}
 try { db.exec(`ALTER TABLE oficios ADD COLUMN sintesis TEXT`); } catch (_) {}
 try { db.exec(`ALTER TABLE oficios ADD COLUMN institucion TEXT`); } catch (_) {}
+try { db.exec(`ALTER TABLE usuarios ADD COLUMN area TEXT`); } catch (_) {}
 try { db.exec(`ALTER TABLE oficios ADD COLUMN reviso_nombre TEXT`); } catch (_) {}
 try { db.exec(`ALTER TABLE oficios ADD COLUMN reviso_puesto TEXT`); } catch (_) {}
 try { db.exec(`ALTER TABLE oficios ADD COLUMN elaboro_nombre TEXT`); } catch (_) {}

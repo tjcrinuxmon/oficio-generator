@@ -10,10 +10,10 @@ function authMiddleware(req, res, next) {
   if (!token) return res.status(401).json({ error: 'Token requerido' });
   try {
     const payload = jwt.verify(token, JWT_SECRET);
-    const user = db.prepare('SELECT id, nombre, email, rol, activo FROM usuarios WHERE id = ?').get(payload.id);
+    const user = db.prepare('SELECT id, nombre, email, rol, activo, area FROM usuarios WHERE id = ?').get(payload.id);
     if (!user) return res.status(401).json({ error: 'Usuario no encontrado' });
     if (!user.activo) return res.status(401).json({ error: 'Usuario desactivado' });
-    req.user = { id: user.id, nombre: user.nombre, email: user.email, rol: user.rol };
+    req.user = { id: user.id, nombre: user.nombre, email: user.email, rol: user.rol, area: user.area || null };
     next();
   } catch (err) {
     return res.status(401).json({ error: 'Token inválido' });

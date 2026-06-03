@@ -413,6 +413,10 @@ async function loadNuevo() {
         const todayVal = cdmxToday();
         document.getElementById('of-fecha').value = todayVal;
         document.getElementById('of-fecha-display').textContent = formatFecha(todayVal);
+        // área — viene del perfil del usuario, no editable
+        const userArea = state.user?.area || '';
+        document.getElementById('of-area').value = userArea;
+        document.getElementById('of-area-display').textContent = userArea || '(sin área asignada — configura en Usuarios)';
     } catch (e) {
         toast(e.message, 'error');
     }
@@ -1084,6 +1088,7 @@ async function loadUsuarios() {
         <td>${u.nombre}</td>
         <td>${u.email}</td>
         <td><span class="status-badge ${u.rol === 'admin' ? 'status-enviado' : 'status-borrador'}">${u.rol}</span></td>
+        <td style="font-size:12px;max-width:180px;">${u.area || '—'}</td>
         <td><span class="status-badge ${u.activo ? 'status-recibido' : 'status-archivado'}">${u.activo ? 'Activo' : 'Inactivo'}</span></td>
         <td>${formatFecha(u.creado_en)}</td>
         <td>
@@ -1117,11 +1122,18 @@ function openUsuarioModal(id = null) {
       <label>${u ? 'Nueva contraseña (dejar vacío para no cambiar)' : 'Contraseña *'}</label>
       <input type="password" id="us-password" placeholder="••••••••" />
     </div>
-    <div class="form-group">
+    <div class="form-group" style="margin-bottom:16px">
       <label>Rol</label>
       <select id="us-rol">
         <option value="usuario" ${u?.rol !== 'admin' ? 'selected' : ''}>Usuario</option>
         <option value="admin"   ${u?.rol === 'admin' ? 'selected' : ''}>Administrador</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Área</label>
+      <select id="us-area">
+        <option value="">— Sin área asignada —</option>
+        ${AREAS.map(a => `<option value="${a}" ${u?.area === a ? 'selected' : ''}>${a}</option>`).join('')}
       </select>
     </div>
   `;
@@ -1133,13 +1145,14 @@ function openUsuarioModal(id = null) {
 }
 
 async function saveUsuario(id) {
-    const nombre = document.getElementById('us-nombre').value.trim();
-    const email = document.getElementById('us-email').value.trim();
+    const nombre   = document.getElementById('us-nombre').value.trim();
+    const email    = document.getElementById('us-email').value.trim();
     const password = document.getElementById('us-password').value;
-    const rol = document.getElementById('us-rol').value;
+    const rol      = document.getElementById('us-rol').value;
+    const area     = document.getElementById('us-area').value || null;
     if (!nombre || !email) { toast('Nombre y email son requeridos', 'error'); return; }
     if (!id && !password) { toast('La contraseña es requerida', 'error'); return; }
-    const body = { nombre, email, rol };
+    const body = { nombre, email, rol, area };
     if (password) body.password = password;
     try {
         if (id) {

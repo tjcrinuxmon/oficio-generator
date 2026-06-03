@@ -346,16 +346,16 @@
               <div class="char-counter" id="of-asunto-counter"></div>
             </div>
             <div class="form-group col-full">
-              <label for="of-sintesis">Síntesis</label>
-              <textarea id="of-sintesis" rows="2" placeholder="Síntesis o resumen del documento" maxlength="1000"></textarea>
+              <label for="of-sintesis">Síntesis <span class="required">*</span></label>
+              <textarea id="of-sintesis" rows="2" placeholder="Síntesis o resumen del documento" maxlength="1000" required></textarea>
             </div>
             <div class="form-group col-full">
               <label for="of-cuerpo">Cuerpo del documento</label>
               <textarea id="of-cuerpo" rows="7" placeholder="Redacta el contenido del oficio (texto que aparecerá en el cuerpo del Word)..."></textarea>
             </div>
             <div class="form-group col-2">
-              <label for="of-id-sai">ID SAI</label>
-              <input type="text" id="of-id-sai" placeholder="Número de expediente SAI" maxlength="100" />
+              <label for="of-id-sai">ID SAI <span class="required">*</span></label>
+              <input type="text" id="of-id-sai" placeholder="Número de expediente SAI" maxlength="100" required />
             </div>
             <div class="form-group col-2">
               <label for="of-firmante">Firmante <span class="required">*</span></label>
@@ -376,39 +376,30 @@
               <input type="text" id="of-solicita" placeholder="Nombre completo de quien solicita" maxlength="255" required />
             </div>
             <div class="form-group col-2">
-              <label for="of-area">Área <span class="required">*</span></label>
-              <select id="of-area" required>
-                <option value="" disabled selected>Selecciona un área</option>
-                <option>Dirección Ejecutiva de Asuntos Jurídicos</option>
-                <option>Dirección de Asuntos HASL</option>
-                <option>Dirección de Asuntos Laborales</option>
-                <option>Dirección de Contratos y Convenios</option>
-                <option>Dirección de Instrucción Recursal</option>
-                <option>Dirección de Normatividad y Consulta</option>
-                <option>Dirección de Servicios Legales</option>
-                <option>Coordinación Administrativa</option>
-                <option>Coordinacion de Análisis de Información y Control Documental</option>
-              </select>
+              <label>Área</label>
+              <div id="of-area-display" style="padding:8px 12px;background:var(--bg-secondary,#f8f5fb);border:1.5px solid var(--border,#e2d9ee);border-radius:8px;font-size:14px;color:var(--text,#1f2937);min-height:38px;display:flex;align-items:center;">—</div>
+              <input type="hidden" id="of-area" />
             </div>
-          </div>
-          <div class="form-group col-full" style="margin-top:4px;">
-            <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted,#6b7280);border-bottom:1px solid var(--border,#e5e7eb);padding-bottom:6px;margin-bottom:4px;">Revisó / Elaboró <span style="font-weight:400;text-transform:none;">(opcional)</span></div>
-          </div>
-          <div class="form-group col-2">
-            <label for="of-reviso-nombre">Nombre — Revisó</label>
-            <input type="text" id="of-reviso-nombre" placeholder="Nombre completo" maxlength="255" />
-          </div>
-          <div class="form-group col-2">
-            <label for="of-reviso-puesto">Puesto — Revisó</label>
-            <input type="text" id="of-reviso-puesto" placeholder="Cargo o puesto" maxlength="255" />
-          </div>
-          <div class="form-group col-2">
-            <label for="of-elaboro-nombre">Nombre — Elaboró</label>
-            <input type="text" id="of-elaboro-nombre" placeholder="Nombre completo" maxlength="255" />
-          </div>
-          <div class="form-group col-2">
-            <label for="of-elaboro-puesto">Puesto — Elaboró</label>
-            <input type="text" id="of-elaboro-puesto" placeholder="Cargo o puesto" maxlength="255" />
+
+            <div class="form-group col-full" style="border-top:1px solid var(--border,#e5e7eb);padding-top:12px;margin-top:4px;">
+              <span style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted,#6b7280);">Revisó / Elaboró <span style="font-weight:400;text-transform:none;">(opcional)</span></span>
+            </div>
+            <div class="form-group col-2">
+              <label for="of-reviso-nombre">Nombre — Revisó</label>
+              <input type="text" id="of-reviso-nombre" placeholder="Nombre completo" maxlength="255" />
+            </div>
+            <div class="form-group col-2">
+              <label for="of-reviso-puesto">Puesto — Revisó</label>
+              <input type="text" id="of-reviso-puesto" placeholder="Cargo o puesto" maxlength="255" />
+            </div>
+            <div class="form-group col-2">
+              <label for="of-elaboro-nombre">Nombre — Elaboró</label>
+              <input type="text" id="of-elaboro-nombre" placeholder="Nombre completo" maxlength="255" />
+            </div>
+            <div class="form-group col-2">
+              <label for="of-elaboro-puesto">Puesto — Elaboró</label>
+              <input type="text" id="of-elaboro-puesto" placeholder="Cargo o puesto" maxlength="255" />
+            </div>
           </div>
 
           <div id="nuevo-error" class="form-error hidden"></div>
@@ -557,6 +548,7 @@
                 <th>Nombre</th>
                 <th>Email</th>
                 <th>Rol</th>
+                <th>Área</th>
                 <th>Estado</th>
                 <th>Registrado</th>
                 <th>Acciones</th>
