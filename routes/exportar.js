@@ -240,18 +240,21 @@ router.get('/docx/:id', async (req, res) => {
 
 
     const NOTA_FUNDAMENTO = 'Con fundamento en el artículo 45, numeral 1, inciso p) de la Ley General de Instituciones y Procedimientos Electorales y de conformidad con el oficio INE/PC/193/2026';
+    const esTitular = !o.requiere_justificacion;
 
     const doc = new Document({
-      footnotes: {
-        1: {
-          children: [
-            new Paragraph({
-              spacing: { after: 0 },
-              children: [new TextRun({ text: NOTA_FUNDAMENTO, font: FONT, size: PT8 })],
-            }),
-          ],
+      ...(esTitular ? {
+        footnotes: {
+          1: {
+            children: [
+              new Paragraph({
+                spacing: { after: 0 },
+                children: [new TextRun({ text: NOTA_FUNDAMENTO, font: FONT, size: PT8 })],
+              }),
+            ],
+          },
         },
-      },
+      } : {}),
       sections: [{
         properties: {
           page: {
@@ -332,7 +335,7 @@ router.get('/docx/:id', async (req, res) => {
             spacing: { after: 160 },
             children: [
               run(o.firmante_cargo || ''),
-              new FootnoteReferenceRun(1),
+              ...(esTitular ? [new FootnoteReferenceRun(1)] : []),
             ],
           }),
 
