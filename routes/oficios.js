@@ -3,6 +3,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const XLSX = require('xlsx');
+const ExcelJS = require('exceljs');
 const db = require('../database');
 const { authMiddleware } = require('../middleware/auth');
 
@@ -297,23 +298,84 @@ router.post('/carga-masiva', uploadXlsx.single('archivo'), (req, res) => {
 });
 
 // GET /api/oficios/carga-masiva/plantilla — descarga plantilla Excel
-router.get('/carga-masiva/plantilla', (req, res) => {
+router.get('/carga-masiva/plantilla', async (req, res) => {
   try {
-    const headers = [
-      'tipo', 'fecha', 'destinatario', 'cargo_destinatario', 'asunto',
-      'sintesis', 'cuerpo', 'id_sai', 'solicita', 'area',
-      'firmante', 'justificacion_firmante', 'razon', 'url_solicitante',
+    const firmantes = db.prepare('SELECT nombre FROM firmantes WHERE activo = 1 ORDER BY es_titular DESC, nombre').all();
+    const firmanteNames = firmantes.map(f => f.nombre);
+    const primerFirmante = firmanteNames[0] || '';
+
+    const HEADERS = [
+      { key: 'tipo',                   header: 'tipo',                   width: 14 },
+      { key: 'fecha',                  header: 'fecha',                  width: 14 },
+      { key: 'destinatario',           header: 'destinatario',           width: 32 },
+      { key: 'cargo_destinatario',     header: 'cargo_destinatario',     width: 26 },
+      { key: 'asunto',                 header: 'asunto',                 width: 42 },
+      { key: 'sintesis',               header: 'sintesis',               width: 22 },
+      { key: 'cuerpo',                 header: 'cuerpo',                 width: 30 },
+      { key: 'id_sai',                 header: 'id_sai',                 width: 12 },
+      { key: 'solicita',               header: 'solicita',               width: 26 },
+      { key: 'area',                   header: 'area',                   width: 36 },
+      { key: 'firmante',               header: 'firmante',               width: 28 },
+      { key: 'justificacion_firmante', header: 'justificacion_firmante', width: 26 },
+      { key: 'razon',                  header: 'razon',                  width: 20 },
+      { key: 'url_solicitante',        header: 'url_solicitante',        width: 36 },
     ];
-    const ejemplo = [{
-      tipo: 'oficio', fecha: new Date().toISOString().slice(0, 10),
-      destinatario: 'Lic. Ejemplo Apellido', cargo_destinatario: 'Director General',
-      asunto: 'Asunto del oficio de ejemplo', sintesis: '', cuerpo: '',
-      id_sai: '', solicita: 'Nombre Apellido', area: 'Dirección de Servicios Legales',
-      firmante: '', justificacion_firmante: '', razon: '', url_solicitante: '',
-    }];
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(ejemplo, { header: headers }), 'Oficios');
-    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+    const wb = new ExcelJS.Workbook();
+
+    // Hoja oculta con los firmantes disponibles
+    const catSheet = wb.addWorksheet('_Firmantes');
+    catSheet.state = 'hidden';
+    firmanteNames.forEach((n, i) => { catSheet.getCell(`A${i + 1}`).value = n; });
+
+    // Hoja principal
+    const ws = wb.addWorksheet('Oficios');
+    ws.columns = HEADERS;
+
+    // Estilo de encabezado
+    const hRow = ws.getRow(1);
+    hRow.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+    hRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF582E73' } };
+    hRow.alignment = { vertical: 'middle', horizontal: 'center' };
+    hRow.height = 20;
+
+    // Fila de ejemplo
+    ws.addRow({
+      tipo: 'oficio',
+      fecha: new Date().toISOString().slice(0, 10),
+      destinatario: 'Lic. Ejemplo Apellido',
+      cargo_destinatario: 'Director General',
+      asunto: 'Asunto del oficio de ejemplo',
+      sintesis: '', cuerpo: '', id_sai: '',
+      solicita: 'Nombre Apellido',
+      area: 'Dirección de Servicios Legales',
+      firmante: primerFirmante,
+      justificacion_firmante: '', razon: '', url_solicitante: '',
+    });
+
+    // Validación: tipo (columna A)
+    ws.dataValidations.add('A2:A1000', {
+      type: 'list',
+      allowBlank: false,
+      showErrorMessage: true,
+      errorTitle: 'Tipo inválido',
+      error: 'Usa: oficio, opinion, dictamen o certificacion',
+      formulae: ['"oficio,opinion,dictamen,certificacion"'],
+    });
+
+    // Validación: firmante (columna K) — referencia a la hoja oculta
+    if (firmanteNames.length > 0) {
+      ws.dataValidations.add('K2:K1000', {
+        type: 'list',
+        allowBlank: true,
+        showErrorMessage: true,
+        errorTitle: 'Firmante inválido',
+        error: 'Selecciona un firmante de la lista',
+        formulae: [`_Firmantes!$A$1:$A$${firmanteNames.length}`],
+      });
+    }
+
+    const buf = await wb.xlsx.writeBuffer();
     res.setHeader('Content-Disposition', 'attachment; filename="plantilla_carga_masiva.xlsx"');
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.send(buf);
