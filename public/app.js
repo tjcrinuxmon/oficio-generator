@@ -124,6 +124,17 @@ function labelEstatus(e) {
     return { borrador: 'Borrador', enviado: 'Enviado', recibido: 'Recibido', archivado: 'Archivado', cancelado: 'Cancelado' }[e] || e;
 }
 
+// Estado del ID SAI derivado de los datos (no es un estatus del ciclo de vida del documento).
+function saiEstado(o) {
+    if (o.id_sai)            return { key: 'capturado', label: 'SAI capturado', color: '#15803d', bg: '#dcfce7' };
+    if (o.justificacion_sai) return { key: 'no_aplica', label: 'SAI no aplica',  color: '#4b5563', bg: '#f3f4f6' };
+    return                          { key: 'pendiente', label: 'Pendiente de ID SAI', color: '#b91c1c', bg: '#fee2e2' };
+}
+function saiBadge(o) {
+    const s = saiEstado(o);
+    return `<span class="status-badge" style="background:${s.bg};color:${s.color}" title="${s.label}">${s.label}</span>`;
+}
+
 async function fetchDownload(url, filename) {
     try {
         const res = await fetch(url, { headers: { Authorization: `Bearer ${state.token}` } });
@@ -236,6 +247,16 @@ async function loadDashboard() {
         document.getElementById('ct-borrador').textContent = cts.filter(o => o.estatus === 'borrador').length;
         document.getElementById('ct-archivado').textContent = cts.filter(o => o.estatus === 'archivado').length;
 
+        // Aviso de pendientes de ID SAI (sobre todos los oficios visibles para el usuario)
+        const pendientesSai = oficios.filter(o => saiEstado(o).key === 'pendiente').length;
+        const saiAlert = document.getElementById('dash-sai-alert');
+        if (pendientesSai > 0) {
+            saiAlert.innerHTML = `⚠ Tienes <strong>${pendientesSai}</strong> oficio(s) pendiente(s) de capturar el ID SAI. Haz clic para verlos.`;
+            saiAlert.style.display = '';
+        } else {
+            saiAlert.style.display = 'none';
+        }
+
         renderRecientes('dash-recientes-oficio', ofs.slice(0, 5), 'No hay oficios registrados aún.');
         renderRecientes('dash-recientes-opinion', ots.slice(0, 5), 'No hay opiniones técnicas registradas aún.');
         renderRecientes('dash-recientes-dictamen', dts.slice(0, 5), 'No hay dictámenes registrados aún.');
@@ -261,6 +282,8 @@ async function loadHistorial(params = {}) {
 
 function renderHistorialTable(oficios) {
     const tipo  = document.getElementById('filter-tipo').value;
+    const saiFiltro = document.getElementById('filter-sai')?.value || '';
+    if (saiFiltro) oficios = oficios.filter(o => saiEstado(o).key === saiFiltro);
     const tbody = document.getElementById('historial-tbody');
     const thead = document.querySelector('#historial-table thead tr');
     const empty = document.getElementById('historial-empty');
@@ -322,7 +345,7 @@ function renderHistorialTable(oficios) {
       <td class="td-asunto" title="${o.asunto}">${o.asunto}</td>
       <td class="td-truncate" title="${o.firmante_nombre || ''}">${o.firmante_nombre || '—'}</td>
       <td class="td-truncate" title="${o.area}">${o.area}</td>
-      <td><span class="status-badge status-${o.estatus}">${labelEstatus(o.estatus)}</span></td>
+      <td><span class="status-badge status-${o.estatus}">${labelEstatus(o.estatus)}</span>${saiEstado(o).key === 'pendiente' ? `<br><span class="status-badge" style="background:#fee2e2;color:#b91c1c;margin-top:4px;display:inline-block" title="Falta capturar el ID SAI">⚠ Sin ID SAI</span>` : ''}</td>
       <td>
         ${o.acuse_path
             ? `<button class="btn-acuse-si" data-id="${o.id}" title="Descargar acuse"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg></button>`
@@ -559,10 +582,12 @@ async function openOficioModal(id, readOnly = false) {
         </div>
 
         <div class="detail-item">
-          <span class="detail-label">ID SAI</span>
-          ${isAdmin
-            ? `<input type="text" id="det-id-sai" class="filter-select" style="width:100%" maxlength="100" value="${q(o.id_sai || '')}">`
-            : `<span class="detail-value">${o.id_sai || '—'}</span>`}
+          <span class="detail-label">ID SAI ${saiBadge(o)}</span>
+          ${!readOnly
+            ? `<input type="text" id="det-id-sai" class="filter-select" style="width:100%" maxlength="10" pattern="\\d{1,10}" inputmode="numeric" placeholder="Número de expediente SAI" oninput="this.value=this.value.replace(/[^0-9]/g,'')" value="${q(o.id_sai || '')}">
+               <label class="detail-label" style="margin-top:8px">Justificación (si el SAI no aplica)</label>
+               <textarea id="det-justificacion-sai" class="filter-select" style="width:100%;min-height:56px;resize:vertical" maxlength="500" placeholder="Si este oficio no requiere ID SAI, explica por qué (deja el ID SAI vacío)">${o.justificacion_sai || ''}</textarea>`
+            : `<span class="detail-value">${o.id_sai || (o.justificacion_sai ? 'No aplica — ' + o.justificacion_sai : '—')}</span>`}
         </div>
 
         <div class="detail-item">
@@ -758,6 +783,14 @@ async function saveOficioChanges(id) {
         body.justificacion_firmante = '';
     }
 
+    // ID SAI / justificación: editable por cualquiera que pueda editar (admin o dueño).
+    // El backend los trata como mutuamente excluyentes (si hay ID SAI, gana).
+    const detIdSai = document.getElementById('det-id-sai');
+    if (detIdSai) {
+        body.id_sai = detIdSai.value.trim();
+        body.justificacion_sai = document.getElementById('det-justificacion-sai')?.value?.trim() || '';
+    }
+
     if (state.user.rol === 'admin') {
         const fecha       = document.getElementById('det-fecha')?.value;
         const asunto      = document.getElementById('det-asunto')?.value;
@@ -770,13 +803,11 @@ async function saveOficioChanges(id) {
 
         const sintesis = document.getElementById('det-sintesis')?.value ?? null;
         const cuerpo   = document.getElementById('det-cuerpo')?.value ?? null;
-        const id_sai   = document.getElementById('det-id-sai')?.value ?? null;
 
         if (fecha)       body.fecha               = fecha;
         if (asunto)      body.asunto              = asunto;
         if (sintesis !== null) body.sintesis        = sintesis;
         if (cuerpo   !== null) body.cuerpo         = cuerpo;
-        if (id_sai   !== null) body.id_sai         = id_sai;
         if (solicita)    body.solicita            = solicita;
         if (area)        body.area                = area;
         if (destinatario !== undefined && destinatario !== null) body.destinatario       = destinatario;
@@ -1237,13 +1268,19 @@ document.getElementById('nuevo-oficio-form').addEventListener('submit', async e 
         const isDictamen      = tipo === 'dictamen';
         const isCertificacion = tipo === 'certificacion';
         const needsUR         = isOpinion || isDictamen;
+        const saiModo = document.getElementById('of-sai-modo').value;
+        const saiFields = saiModo === 'tengo'
+            ? { id_sai: document.getElementById('of-id-sai').value || undefined }
+            : saiModo === 'no_aplica'
+              ? { justificacion_sai: document.getElementById('of-justificacion-sai').value || undefined }
+              : {}; // "despues" → queda pendiente de SAI
         const body = {
             tipo,
             fecha: document.getElementById('of-fecha').value,
             asunto: document.getElementById('of-asunto').value,
             sintesis: document.getElementById('of-sintesis').value || undefined,
             cuerpo: document.getElementById('of-cuerpo').value || undefined,
-            id_sai: document.getElementById('of-id-sai').value || undefined,
+            ...saiFields,
             firmante_id: document.getElementById('of-firmante').value,
             solicita: document.getElementById('of-solicita').value,
             area: document.getElementById('of-area').value,
@@ -1264,9 +1301,18 @@ document.getElementById('nuevo-oficio-form').addEventListener('submit', async e 
         document.getElementById('numero-preview').classList.remove('hidden');
         const label = isDictamen ? 'Dictamen' : isCertificacion ? 'Certificación' : isOpinion ? 'Opinión Técnica' : 'Oficio';
         toast(`${label} ${oficio.numero_oficio} generado`, 'success');
+        if (saiModo === 'despues') {
+            toast(`Lleva el número ${oficio.numero_oficio} al SAI y captura el ID SAI después desde Historial.`, 'info');
+        }
+        // Recordatorio suave: avisa si quedan oficios pendientes de capturar el ID SAI.
+        api('GET', '/oficios').then(mis => {
+            const pend = mis.filter(o => saiEstado(o).key === 'pendiente').length;
+            if (pend > 0) toast(`Tienes ${pend} oficio(s) pendiente(s) de ID SAI. Filtra "Pendiente de ID SAI" en Historial.`, 'info');
+        }).catch(() => {});
         document.getElementById('nuevo-oficio-form').reset();
         document.getElementById('justificacion-group').style.display = 'none';
         applyTipoToggle(currentTipo);
+        applySaiModoToggle();
         const todayAfter = cdmxToday();
         document.getElementById('of-fecha').value = todayAfter;
         document.getElementById('of-fecha-display').textContent = formatFecha(todayAfter);
@@ -1305,12 +1351,29 @@ document.getElementById('of-firmante').addEventListener('change', function () {
     }
 });
 
+// ID SAI: modo condicional (tengo el número / lo capturaré después / no aplica)
+function applySaiModoToggle() {
+    const modo = document.getElementById('of-sai-modo').value;
+    const idInput = document.getElementById('of-id-sai');
+    const justInput = document.getElementById('of-justificacion-sai');
+    document.getElementById('of-id-sai-group').style.display      = modo === 'tengo'     ? '' : 'none';
+    document.getElementById('of-sai-despues-group').style.display = modo === 'despues'   ? '' : 'none';
+    document.getElementById('of-just-sai-group').style.display    = modo === 'no_aplica' ? '' : 'none';
+    idInput.required = modo === 'tengo';
+    justInput.required = modo === 'no_aplica';
+    if (modo !== 'tengo') idInput.value = '';
+    if (modo !== 'no_aplica') justInput.value = '';
+}
+document.getElementById('of-sai-modo').addEventListener('change', applySaiModoToggle);
+applySaiModoToggle();
+
 // Limpiar form nuevo oficio
 document.getElementById('btn-limpiar').addEventListener('click', () => {
     document.getElementById('nuevo-oficio-form').reset();
     document.getElementById('of-cuerpo').value = '';
     document.getElementById('justificacion-group').style.display = 'none';
     applyTipoToggle(currentTipo);
+    applySaiModoToggle();
     document.getElementById('numero-preview').classList.add('hidden');
     document.getElementById('nuevo-error').classList.add('hidden');
     const todayClean = cdmxToday();
@@ -1371,8 +1434,17 @@ document.getElementById('historial-page-size').addEventListener('change', e => {
 document.getElementById('filter-q').addEventListener('keydown', e => {
     if (e.key === 'Enter') document.getElementById('btn-filtrar').click();
 });
+document.getElementById('filter-sai').addEventListener('change', () => {
+    historialPage = 1;
+    renderHistorialTable(state.oficios);
+});
+document.getElementById('dash-sai-alert').addEventListener('click', () => {
+    document.getElementById('filter-sai').value = 'pendiente';
+    historialPage = 1;
+    showView('historial'); // showView('historial') ya dispara loadHistorial
+});
 document.getElementById('btn-limpiar-filtros').addEventListener('click', () => {
-    ['filter-q', 'filter-fecha-inicio', 'filter-fecha-fin', 'filter-tipo', 'filter-estatus'].forEach(id => {
+    ['filter-q', 'filter-fecha-inicio', 'filter-fecha-fin', 'filter-tipo', 'filter-estatus', 'filter-sai'].forEach(id => {
         document.getElementById(id).value = '';
     });
     document.querySelectorAll('.tipo-tab').forEach(t => t.classList.remove('active'));

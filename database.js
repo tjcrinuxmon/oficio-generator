@@ -77,6 +77,7 @@ try { db.exec(`ALTER TABLE oficios ADD COLUMN url_solicitante TEXT`); } catch (_
 try { db.exec(`ALTER TABLE oficios ADD COLUMN razon_reactivacion TEXT`); } catch (_) {}
 try { db.exec(`ALTER TABLE oficios ADD COLUMN cuerpo TEXT`); } catch (_) {}
 try { db.exec(`ALTER TABLE oficios ADD COLUMN id_sai TEXT`); } catch (_) {}
+try { db.exec(`ALTER TABLE oficios ADD COLUMN justificacion_sai TEXT`); } catch (_) {}
 try { db.exec(`ALTER TABLE oficios ADD COLUMN sintesis TEXT`); } catch (_) {}
 try { db.exec(`ALTER TABLE oficios ADD COLUMN institucion TEXT`); } catch (_) {}
 try { db.exec(`ALTER TABLE usuarios ADD COLUMN area TEXT`); } catch (_) {}

@@ -97,6 +97,9 @@
         </div>
         <span id="anio-activo-badge" style="display:none"></span>
 
+        <!-- Aviso de oficios pendientes de capturar el ID SAI -->
+        <div id="dash-sai-alert" style="display:none;margin:0 0 16px;padding:12px 16px;background:#fef2f2;border:1.5px solid #fecaca;border-left:5px solid #dc2626;border-radius:10px;color:#991b1b;cursor:pointer;font-size:14px;font-weight:600"></div>
+
         <!-- Paneles por tipo -->
         <div class="dash-tipo-grid">
 
@@ -357,8 +360,12 @@
               <textarea id="of-cuerpo" rows="7" placeholder="Redacta el contenido del oficio (texto que aparecerá en el cuerpo del Word)..."></textarea>
             </div>
             <div class="form-group col-2">
-              <label for="of-id-sai">ID SAI <span class="required">*</span></label>
-              <input type="text" id="of-id-sai" placeholder="Número de expediente SAI" maxlength="10" pattern="\d{1,10}" inputmode="numeric" oninput="this.value=this.value.replace(/[^0-9]/g,'')" required />
+              <label for="of-sai-modo">ID SAI <span class="required">*</span></label>
+              <select id="of-sai-modo">
+                <option value="tengo">Ya tengo el ID SAI</option>
+                <option value="despues">Lo capturaré después (ir al SAI)</option>
+                <option value="no_aplica">No aplica a este oficio</option>
+              </select>
             </div>
             <div class="form-group col-2">
               <label for="of-firmante">Firmante <span class="required">*</span></label>
@@ -382,6 +389,21 @@
               <label>Área</label>
               <div id="of-area-display" style="padding:8px 12px;background:var(--bg-secondary,#f8f5fb);border:1.5px solid var(--border,#e2d9ee);border-radius:8px;font-size:14px;color:var(--text,#1f2937);min-height:38px;display:flex;align-items:center;">—</div>
               <input type="hidden" id="of-area" />
+            </div>
+
+            <!-- ID SAI: campos condicionales según of-sai-modo -->
+            <div class="form-group col-full" id="of-id-sai-group">
+              <label for="of-id-sai">Número de expediente SAI <span class="required">*</span></label>
+              <input type="text" id="of-id-sai" placeholder="Número de expediente SAI" maxlength="10" pattern="\d{1,10}" inputmode="numeric" oninput="this.value=this.value.replace(/[^0-9]/g,'')" />
+            </div>
+            <div class="form-group col-full" id="of-sai-despues-group" style="display:none">
+              <div class="label-warning" style="font-size:13px;padding:10px 12px;background:#fff7ed;border:1.5px solid #fed7aa;border-radius:8px;color:#9a3412;">
+                ℹ️ El oficio se generará como <strong>borrador</strong>. Lleva el número de oficio al SAI, obtén el ID SAI y captúralo después desde el detalle del oficio.
+              </div>
+            </div>
+            <div class="form-group col-full" id="of-just-sai-group" style="display:none">
+              <label for="of-justificacion-sai" class="label-warning">Justificación: ¿por qué no aplica el ID SAI? <span class="required">*</span></label>
+              <textarea id="of-justificacion-sai" rows="2" maxlength="500" placeholder="Explica por qué este oficio no requiere ID SAI"></textarea>
             </div>
 
             <div class="form-group col-full" style="border-top:1px solid var(--border,#e5e7eb);padding-top:12px;margin-top:4px;">
@@ -455,6 +477,12 @@
             <option value="borrador">Borrador</option>
             <option value="archivado">Archivado</option>
             <option value="cancelado">Cancelado</option>
+          </select>
+          <select id="filter-sai" class="filter-select" title="Estado del ID SAI">
+            <option value="">SAI: todos</option>
+            <option value="pendiente">Pendiente de ID SAI</option>
+            <option value="capturado">SAI capturado</option>
+            <option value="no_aplica">SAI no aplica</option>
           </select>
           <button class="btn btn-primary btn-sm" id="btn-filtrar">Filtrar</button>
           <button class="btn btn-ghost btn-sm" id="btn-limpiar-filtros">Limpiar</button>

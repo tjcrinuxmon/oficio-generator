@@ -103,7 +103,7 @@ router.get('/:id', (req, res) => {
 
 // POST /api/oficios/generar — atomic
 router.post('/generar', (req, res) => {
-  const { fecha, destinatario, cargo_destinatario, institucion, asunto, cuerpo, id_sai, sintesis, firmante_id, justificacion_firmante, razon, solicita, area, url_solicitante, reviso_nombre, reviso_puesto, elaboro_nombre, elaboro_puesto } = req.body;
+  const { fecha, destinatario, cargo_destinatario, institucion, asunto, cuerpo, id_sai, justificacion_sai, sintesis, firmante_id, justificacion_firmante, razon, solicita, area, url_solicitante, reviso_nombre, reviso_puesto, elaboro_nombre, elaboro_puesto } = req.body;
   const tipo            = ['oficio', 'opinion', 'dictamen', 'certificacion'].includes(req.body.tipo) ? req.body.tipo : 'oficio';
   const isOpinion       = tipo === 'opinion';
   const isDictamen      = tipo === 'dictamen';
@@ -111,6 +111,9 @@ router.post('/generar', (req, res) => {
 
   if (!fecha || !asunto || !firmante_id || !solicita || !area) return res.status(400).json({ error: 'Todos los campos obligatorios son requeridos' });
   if (id_sai && (!/^\d+$/.test(String(id_sai).trim()) || String(id_sai).trim().length > 10)) return res.status(400).json({ error: 'El ID SAI debe ser numérico y tener máximo 10 dígitos' });
+  // ID SAI y justificación son mutuamente excluyentes; si no hay ninguno, el oficio queda "pendiente de SAI".
+  const idSaiVal = id_sai ? String(id_sai).trim() : '';
+  const justSaiVal = idSaiVal ? null : (justificacion_sai ? String(justificacion_sai).trim() || null : null);
   if (!isOpinion && !isDictamen && (!destinatario || !cargo_destinatario)) return res.status(400).json({ error: 'Todos los campos obligatorios son requeridos' });
   if ((isOpinion || isDictamen) && !url_solicitante) return res.status(400).json({ error: 'Todos los campos obligatorios son requeridos' });
 
@@ -146,10 +149,10 @@ router.post('/generar', (req, res) => {
     else if (isCertificacion) db.prepare(`UPDATE anios_config SET correlativo_certificacion_actual  = ? WHERE id = ?`).run(nuevoCorrelativo, row.id);
     else                      db.prepare(`UPDATE anios_config SET correlativo_actual                = ? WHERE id = ?`).run(nuevoCorrelativo, row.id);
 
-    db.prepare(`INSERT INTO oficios (numero_oficio, correlativo, anio, tipo, fecha, destinatario, cargo_destinatario, institucion, asunto, cuerpo, id_sai, sintesis, firmante_id, requiere_justificacion, justificacion_firmante, razon, solicita, area, url_solicitante, reviso_nombre, reviso_puesto, elaboro_nombre, elaboro_puesto, creado_por) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    db.prepare(`INSERT INTO oficios (numero_oficio, correlativo, anio, tipo, fecha, destinatario, cargo_destinatario, institucion, asunto, cuerpo, id_sai, justificacion_sai, sintesis, firmante_id, requiere_justificacion, justificacion_firmante, razon, solicita, area, url_solicitante, reviso_nombre, reviso_puesto, elaboro_nombre, elaboro_puesto, creado_por) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(numeroOficio, nuevoCorrelativo, row.anio, tipo, fecha,
            destinatario || '', cargo_destinatario || '', institucion || null,
-           asunto, cuerpo || null, id_sai || null, sintesis || null,
+           asunto, cuerpo || null, idSaiVal || null, justSaiVal, sintesis || null,
            parseInt(firmante_id), requiereJustificacion ? 1 : 0,
            justificacion_firmante || null, razon || null, solicita, area,
            url_solicitante || null,
@@ -485,7 +488,7 @@ router.get('/carga-masiva/plantilla', async (req, res) => {
 
 // PUT /api/oficios/:id
 router.put('/:id', (req, res) => {
-  const { estatus, fecha, destinatario, cargo_destinatario, institucion, asunto, cuerpo, id_sai, sintesis, firmante_id, justificacion_firmante, razon, solicita, area, url_solicitante, razon_reactivacion, reviso_nombre, reviso_puesto, elaboro_nombre, elaboro_puesto } = req.body;
+  const { estatus, fecha, destinatario, cargo_destinatario, institucion, asunto, cuerpo, id_sai, justificacion_sai, sintesis, firmante_id, justificacion_firmante, razon, solicita, area, url_solicitante, razon_reactivacion, reviso_nombre, reviso_puesto, elaboro_nombre, elaboro_puesto } = req.body;
   const ownerClause = req.user.rol !== 'admin' ? 'AND creado_por = ?' : '';
   const checkParams = req.user.rol !== 'admin' ? [req.params.id, req.user.id] : [req.params.id];
   if (!db.prepare(`SELECT id FROM oficios WHERE id = ? ${ownerClause}`).get(...checkParams)) {
@@ -533,7 +536,16 @@ router.put('/:id', (req, res) => {
   if (url_solicitante !== undefined)  { sets.push('url_solicitante = ?'); params.push(url_solicitante || null); }
   if (razon_reactivacion !== undefined) { sets.push('razon_reactivacion = ?'); params.push(razon_reactivacion || null); }
   if (cuerpo !== undefined)           { sets.push('cuerpo = ?'); params.push(cuerpo || null); }
-  if (id_sai   !== undefined)          { sets.push('id_sai = ?');   params.push(id_sai   || null); }
+  // ID SAI y justificación de SAI: mutuamente excluyentes. Si llega el ID SAI, gana y se limpia la justificación.
+  if (id_sai !== undefined || justificacion_sai !== undefined) {
+    const idv = id_sai ? String(id_sai).trim() : '';
+    if (idv && (!/^\d+$/.test(idv) || idv.length > 10)) {
+      return res.status(400).json({ error: 'El ID SAI debe ser numérico y tener máximo 10 dígitos' });
+    }
+    const jusv = idv ? null : (justificacion_sai ? String(justificacion_sai).trim() || null : null);
+    sets.push('id_sai = ?');            params.push(idv || null);
+    sets.push('justificacion_sai = ?'); params.push(jusv);
+  }
   if (sintesis !== undefined)          { sets.push('sintesis = ?'); params.push(sintesis || null); }
   sets.push(`actualizado_en = datetime('now','localtime')`);
 
