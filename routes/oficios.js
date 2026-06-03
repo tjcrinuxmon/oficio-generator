@@ -187,7 +187,12 @@ router.post('/carga-masiva', uploadXlsx.single('archivo'), (req, res) => {
   let rows;
   try {
     const wb = XLSX.read(req.file.buffer, { type: 'buffer', cellDates: true });
-    const ws = wb.Sheets[wb.SheetNames[0]];
+    // Leer la hoja de datos "Oficios", NO la hoja oculta "_Firmantes" (que es SheetNames[0]).
+    // Para archivos hechos a mano, caer a la primera hoja que no empiece con "_".
+    const sheetName = wb.SheetNames.find(n => n === 'Oficios')
+                   || wb.SheetNames.find(n => !n.startsWith('_'))
+                   || wb.SheetNames[0];
+    const ws = wb.Sheets[sheetName];
     rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
   } catch (e) {
     return res.status(400).json({ error: 'No se pudo leer el archivo: ' + e.message });
