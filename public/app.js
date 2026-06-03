@@ -24,7 +24,9 @@ const AREAS = [
     'Dirección de Normatividad y Consulta',
     'Dirección de Servicios Legales',
     'Coordinación Administrativa',
-    'Coordinacion de Análisis de Información y Control Documental',
+    'Coordinación de Análisis de Información y Control Documental',
+    'Líder de Enlace Interinstitucional',
+    'Secretaría Particular',
 ];
 
 const URS = [
