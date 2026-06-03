@@ -177,7 +177,7 @@ router.post('/carga-masiva', uploadXlsx.single('archivo'), (req, res) => {
     const cargo_destinatario = String(row.cargo_destinatario || '').trim();
     const asunto = String(row.asunto || '').trim();
     const solicita = String(row.solicita || '').trim();
-    const area = String(row.area || '').trim();
+    const area = String(row.col_area || row.area || '').trim();
     const firmante_nombre = String(row.firmante || '').trim();
     const url_solicitante = String(row.solicitante || row.url_solicitante || '').trim();
     const cuerpo = String(row.cuerpo || '').trim();
@@ -316,21 +316,40 @@ router.get('/carga-masiva/plantilla', async (req, res) => {
     const firmanteNames = firmantes.map(f => f.nombre);
     const primerFirmante = firmanteNames[0] || '';
 
+    // req = obligatorio, opt = opcional, cond = condicional
     const HEADERS = [
-      { key: 'tipo',                   header: 'tipo',                   width: 14 },
-      { key: 'fecha',                  header: 'fecha',                  width: 14 },
-      { key: 'destinatario',           header: 'destinatario',           width: 32 },
-      { key: 'cargo_destinatario',     header: 'cargo_destinatario',     width: 26 },
-      { key: 'asunto',                 header: 'asunto',                 width: 42 },
-      { key: 'sintesis',               header: 'sintesis',               width: 22 },
-      { key: 'cuerpo',                 header: 'cuerpo',                 width: 30 },
-      { key: 'id_sai',                 header: 'id_sai',                 width: 12 },
-      { key: 'solicita',               header: 'solicita',               width: 26 },
-      { key: 'area',                   header: 'area',                   width: 36 },
-      { key: 'firmante',               header: 'firmante',               width: 28 },
-      { key: 'justificacion_firmante', header: 'justificacion_firmante', width: 26 },
-      { key: 'razon',                  header: 'razon',                  width: 20 },
-      { key: 'url_solicitante',        header: 'solicitante',             width: 36 },
+      { key: 'tipo',                   header: 'tipo *',                        width: 16,  req: true },
+      { key: 'fecha',                  header: 'fecha *',                       width: 14,  req: true },
+      { key: 'destinatario',           header: 'destinatario *',                width: 32,  req: true },
+      { key: 'cargo_destinatario',     header: 'cargo_destinatario *',          width: 26,  req: true },
+      { key: 'asunto',                 header: 'asunto *',                      width: 42,  req: true },
+      { key: 'solicita',               header: 'solicita *',                    width: 26,  req: true },
+      { key: 'col_area',               header: 'area *',                        width: 36,  req: true },
+      { key: 'firmante',               header: 'firmante',                      width: 28,  req: false },
+      { key: 'sintesis',               header: 'sintesis',                      width: 22,  req: false },
+      { key: 'cuerpo',                 header: 'cuerpo',                        width: 30,  req: false },
+      { key: 'id_sai',                 header: 'id_sai',                        width: 12,  req: false },
+      { key: 'justificacion_firmante', header: 'justificacion_firmante',        width: 26,  req: false },
+      { key: 'razon',                  header: 'razon',                         width: 20,  req: false },
+      { key: 'url_solicitante',        header: 'solicitante (opinion/dictamen)',width: 36,  req: false },
+    ];
+
+    // Notas descriptivas por columna (fila 2)
+    const NOTAS = [
+      'oficio | opinion | dictamen | certificacion',
+      'YYYY-MM-DD  (ej. 2026-06-03)',
+      'Nombre del destinatario (oficio/certif.)',
+      'Cargo del destinatario (oficio/certif.)',
+      'Texto del asunto',
+      'Nombre de quien solicita',
+      'Área que genera el oficio',
+      'Nombre del firmante (vacío = titular)',
+      'Síntesis o resumen',
+      'Cuerpo del documento',
+      'Número SAI (máx. 10 dígitos)',
+      'Solo si el firmante no es el titular',
+      'Campo razon',
+      'UR solicitante (opinion/dictamen)',
     ];
 
     const wb = new ExcelJS.Workbook();
@@ -342,31 +361,62 @@ router.get('/carga-masiva/plantilla', async (req, res) => {
 
     // Hoja principal
     const ws = wb.addWorksheet('Oficios');
-    ws.columns = HEADERS;
+    ws.columns = HEADERS.map(({ key, header, width }) => ({ key, header, width }));
 
-    // Estilo de encabezado
+    // Fila 1 — encabezados con color según obligatorio/opcional
     const hRow = ws.getRow(1);
-    hRow.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
-    hRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF582E73' } };
-    hRow.alignment = { vertical: 'middle', horizontal: 'center' };
-    hRow.height = 20;
-
-    // Fila de ejemplo
-    ws.addRow({
-      tipo: 'oficio',
-      fecha: new Date().toISOString().slice(0, 10),
-      destinatario: 'Lic. Ejemplo Apellido',
-      cargo_destinatario: 'Director General',
-      asunto: 'Asunto del oficio de ejemplo',
-      sintesis: '', cuerpo: '', id_sai: '',
-      solicita: 'Nombre Apellido',
-      area: 'Dirección de Servicios Legales',
-      firmante: primerFirmante,
-      justificacion_firmante: '', razon: '', url_solicitante: '',
+    hRow.height = 22;
+    HEADERS.forEach((col, i) => {
+      const cell = hRow.getCell(i + 1);
+      cell.font      = { bold: true, color: { argb: 'FFFFFFFF' }, size: 10 };
+      cell.fill      = { type: 'pattern', pattern: 'solid',
+                         fgColor: { argb: col.req ? 'FF7C2D92' : 'FF9E6BB5' } };
+      cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: false };
+      cell.border    = { bottom: { style: 'thin', color: { argb: 'FFFFFFFF' } } };
     });
 
-    // Validación: tipo (columna A)
-    ws.dataValidations.add('A2:A1000', {
+    // Fila 2 — notas descriptivas (fondo claro, texto gris)
+    const noteRow = ws.addRow(NOTAS);
+    noteRow.height = 30;
+    noteRow.eachCell((cell, colNum) => {
+      cell.font      = { italic: true, color: { argb: 'FF6B21A8' }, size: 9 };
+      cell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3E8FF' } };
+      cell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true };
+    });
+
+    // Leyenda en celda A3
+    ws.addRow(['* = obligatorio — los demás son opcionales']);
+    const legRow = ws.getRow(3);
+    legRow.height = 16;
+    legRow.getCell(1).font = { bold: true, color: { argb: 'FF7C2D92' }, size: 9 };
+    legRow.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFDF4FF' } };
+    ws.mergeCells(`A3:N3`);
+
+    // Fila 4 — ejemplo de datos
+    ws.addRow({
+      tipo:                'oficio',
+      fecha:               new Date().toISOString().slice(0, 10),
+      destinatario:        'Lic. Ejemplo Apellido',
+      cargo_destinatario:  'Director General',
+      asunto:              'Asunto del oficio de ejemplo',
+      solicita:            'Nombre Apellido',
+      col_area:            'Dirección de Servicios Legales',
+      firmante:            primerFirmante,
+      sintesis:            '',
+      cuerpo:              '',
+      id_sai:              '',
+      justificacion_firmante: '',
+      razon:               '',
+      url_solicitante:     '',
+    });
+    const exRow = ws.getRow(4);
+    exRow.eachCell(cell => {
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0FDF4' } };
+      cell.font = { size: 10 };
+    });
+
+    // Validación: tipo (columna A) — datos desde fila 5
+    ws.dataValidations.add('A5:A1000', {
       type: 'list',
       allowBlank: false,
       showErrorMessage: true,
@@ -375,9 +425,9 @@ router.get('/carga-masiva/plantilla', async (req, res) => {
       formulae: ['"oficio,opinion,dictamen,certificacion"'],
     });
 
-    // Validación: firmante (columna K) — referencia a la hoja oculta
+    // Validación: firmante (columna H) — referencia a la hoja oculta
     if (firmanteNames.length > 0) {
-      ws.dataValidations.add('K2:K1000', {
+      ws.dataValidations.add('H5:H1000', {
         type: 'list',
         allowBlank: true,
         showErrorMessage: true,
