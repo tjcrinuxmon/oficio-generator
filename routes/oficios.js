@@ -89,27 +89,35 @@ router.post('/generar', (req, res) => {
   const requiereJustificacion = !firmante.es_titular;
   if (requiereJustificacion && !justificacion_firmante) return res.status(400).json({ error: 'La justificación es obligatoria cuando no firma el titular' });
 
-  const anioRow = db.prepare(`SELECT id, anio, correlativo_actual, correlativo_opinion_actual, correlativo_dictamen_actual, correlativo_certificacion_actual FROM anios_config WHERE activo = 1 LIMIT 1`).get();
-  if (!anioRow) return res.status(500).json({ error: 'No hay año activo configurado' });
+  if (!db.prepare(`SELECT id FROM anios_config WHERE activo = 1 LIMIT 1`).get()) {
+    return res.status(500).json({ error: 'No hay año activo configurado' });
+  }
 
   const generar = db.transaction(() => {
-    const nuevoCorrelativo = isDictamen
-      ? (anioRow.correlativo_dictamen_actual || 0) + 1
-      : isOpinion
-        ? (anioRow.correlativo_opinion_actual || 0) + 1
-        : isCertificacion
-          ? (anioRow.correlativo_certificacion_actual || 0) + 1
-          : anioRow.correlativo_actual + 1;
+    // Leer el contador dentro de la transacción para evitar race conditions
+    const row = db.prepare(`SELECT id, anio, correlativo_actual, correlativo_opinion_actual, correlativo_dictamen_actual, correlativo_certificacion_actual FROM anios_config WHERE activo = 1 LIMIT 1`).get();
 
-    const numeroOficio = buildOficioNumero(nuevoCorrelativo, anioRow.anio, tipo);
+    // MAX real de la tabla como respaldo por si el contador quedó desfasado
+    const maxReal = db.prepare(
+      `SELECT COALESCE(MAX(correlativo), 0) as max FROM oficios WHERE anio = ? AND tipo = ?`
+    ).get(row.anio, tipo).max;
 
-    if (isDictamen)      db.prepare(`UPDATE anios_config SET correlativo_dictamen_actual = ? WHERE id = ?`).run(nuevoCorrelativo, anioRow.id);
-    else if (isOpinion)  db.prepare(`UPDATE anios_config SET correlativo_opinion_actual = ? WHERE id = ?`).run(nuevoCorrelativo, anioRow.id);
-    else if (isCertificacion) db.prepare(`UPDATE anios_config SET correlativo_certificacion_actual = ? WHERE id = ?`).run(nuevoCorrelativo, anioRow.id);
-    else                 db.prepare(`UPDATE anios_config SET correlativo_actual = ? WHERE id = ?`).run(nuevoCorrelativo, anioRow.id);
+    const baseContador = isDictamen      ? (row.correlativo_dictamen_actual      || 0)
+                       : isOpinion       ? (row.correlativo_opinion_actual        || 0)
+                       : isCertificacion ? (row.correlativo_certificacion_actual  || 0)
+                       :                   row.correlativo_actual;
+
+    const nuevoCorrelativo = Math.max(baseContador, maxReal) + 1;
+
+    const numeroOficio = buildOficioNumero(nuevoCorrelativo, row.anio, tipo);
+
+    if (isDictamen)           db.prepare(`UPDATE anios_config SET correlativo_dictamen_actual      = ? WHERE id = ?`).run(nuevoCorrelativo, row.id);
+    else if (isOpinion)       db.prepare(`UPDATE anios_config SET correlativo_opinion_actual        = ? WHERE id = ?`).run(nuevoCorrelativo, row.id);
+    else if (isCertificacion) db.prepare(`UPDATE anios_config SET correlativo_certificacion_actual  = ? WHERE id = ?`).run(nuevoCorrelativo, row.id);
+    else                      db.prepare(`UPDATE anios_config SET correlativo_actual                = ? WHERE id = ?`).run(nuevoCorrelativo, row.id);
 
     db.prepare(`INSERT INTO oficios (numero_oficio, correlativo, anio, tipo, fecha, destinatario, cargo_destinatario, institucion, asunto, cuerpo, id_sai, sintesis, firmante_id, requiere_justificacion, justificacion_firmante, razon, solicita, area, url_solicitante, reviso_nombre, reviso_puesto, elaboro_nombre, elaboro_puesto, creado_por) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .run(numeroOficio, nuevoCorrelativo, anioRow.anio, tipo, fecha,
+      .run(numeroOficio, nuevoCorrelativo, row.anio, tipo, fecha,
            destinatario || '', cargo_destinatario || '', institucion || null,
            asunto, cuerpo || null, id_sai || null, sintesis || null,
            parseInt(firmante_id), requiereJustificacion ? 1 : 0,
