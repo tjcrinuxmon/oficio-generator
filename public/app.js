@@ -1337,7 +1337,7 @@ document.getElementById('btn-carga-masiva-cancelar').addEventListener('click', (
 
 document.getElementById('btn-descargar-plantilla').addEventListener('click', async (e) => {
     e.preventDefault();
-    fetchDownload('/api/of/carga-masiva/plantilla', 'plantilla_carga_masiva.xlsx');
+    fetchDownload('/api/of/oficios/carga-masiva/plantilla', 'plantilla_carga_masiva.xlsx');
 });
 
 document.getElementById('btn-carga-masiva-subir').addEventListener('click', async () => {
@@ -1357,7 +1357,7 @@ document.getElementById('btn-carga-masiva-subir').addEventListener('click', asyn
         const fd = new FormData();
         fd.append('archivo', fileInput.files[0]);
         const opts = { method: 'POST', headers: { Authorization: `Bearer ${state.token}` }, body: fd };
-        const res = await fetch('/api/of/carga-masiva', opts);
+        const res = await fetch('/api/of/oficios/carga-masiva', opts);
         const data = await res.json().catch(() => ({}));
 
         if (!res.ok) {
