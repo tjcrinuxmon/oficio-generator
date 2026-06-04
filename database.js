@@ -85,6 +85,8 @@ try { db.exec(`ALTER TABLE oficios ADD COLUMN reviso_nombre TEXT`); } catch (_) 
 try { db.exec(`ALTER TABLE oficios ADD COLUMN reviso_puesto TEXT`); } catch (_) {}
 try { db.exec(`ALTER TABLE oficios ADD COLUMN elaboro_nombre TEXT`); } catch (_) {}
 try { db.exec(`ALTER TABLE oficios ADD COLUMN elaboro_puesto TEXT`); } catch (_) {}
+try { db.exec(`ALTER TABLE oficios ADD COLUMN ambito TEXT DEFAULT 'interno'`); } catch (_) {}
+try { db.exec(`ALTER TABLE oficios ADD COLUMN incluir_vre INTEGER DEFAULT 1`); } catch (_) {}
 
 // Seed: default admin
 if (!db.prepare(`SELECT id FROM usuarios WHERE rol = 'admin' LIMIT 1`).get()) {

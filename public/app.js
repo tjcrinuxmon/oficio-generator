@@ -447,6 +447,19 @@ async function loadNuevo() {
     }
 }
 
+// Muestra/oculta los campos Revisó/Elaboró del detalle según ámbito + checkbox.
+// Interno: siempre visibles. Externo: solo si "Incluir tabla VRE" está marcado.
+function applyDetVre() {
+    const sel = document.getElementById('det-ambito');
+    if (!sel) return;
+    const esExterno = sel.value === 'externo';
+    const wrap = document.getElementById('det-vre-wrap');
+    if (wrap) wrap.style.display = esExterno ? 'flex' : 'none';
+    const chk = document.getElementById('det-incluir-vre');
+    const show = !esExterno || (chk && chk.checked);
+    document.querySelectorAll('.det-vre-field').forEach(el => { el.style.display = show ? '' : 'none'; });
+}
+
 // ── Modal Oficio Detalle ──────────────────────────────
 async function openOficioModal(id, readOnly = false) {
     try {
@@ -532,33 +545,6 @@ async function openOficioModal(id, readOnly = false) {
             : `<span class="detail-value">${o.url_solicitante || '—'}</span>`}
         </div>`}
 
-        <div class="detail-item" style="grid-column:1/-1;border-top:1px solid var(--border,#e5e7eb);margin-top:4px;padding-top:8px;">
-          <span class="detail-label" style="font-size:11px;color:var(--text-muted);">Revisó / Elaboró (opcional — si vacío usa firmante/solicita)</span>
-        </div>
-        <div class="detail-item">
-          <span class="detail-label">Nombre — Revisó</span>
-          ${isAdmin
-            ? `<input type="text" id="det-reviso-nombre" class="filter-select" style="width:100%" maxlength="255" placeholder="(usa firmante si vacío)" value="${q(o.reviso_nombre || '')}">`
-            : `<span class="detail-value">${o.reviso_nombre || o.firmante_nombre || '—'}</span>`}
-        </div>
-        <div class="detail-item">
-          <span class="detail-label">Puesto — Revisó</span>
-          ${isAdmin
-            ? `<input type="text" id="det-reviso-puesto" class="filter-select" style="width:100%" maxlength="255" placeholder="(usa cargo firmante si vacío)" value="${q(o.reviso_puesto || '')}">`
-            : `<span class="detail-value">${o.reviso_puesto || o.firmante_cargo || '—'}</span>`}
-        </div>
-        <div class="detail-item">
-          <span class="detail-label">Nombre — Elaboró</span>
-          ${isAdmin
-            ? `<input type="text" id="det-elaboro-nombre" class="filter-select" style="width:100%" maxlength="255" placeholder="(usa solicita si vacío)" value="${q(o.elaboro_nombre || '')}">`
-            : `<span class="detail-value">${o.elaboro_nombre || o.solicita || '—'}</span>`}
-        </div>
-        <div class="detail-item">
-          <span class="detail-label">Puesto — Elaboró</span>
-          ${isAdmin
-            ? `<input type="text" id="det-elaboro-puesto" class="filter-select" style="width:100%" maxlength="255" placeholder="(usa área si vacío)" value="${q(o.elaboro_puesto || '')}">`
-            : `<span class="detail-value">${o.elaboro_puesto || o.area || '—'}</span>`}
-        </div>
 
         <div class="detail-item full">
           <span class="detail-label">Asunto</span>
@@ -627,6 +613,48 @@ async function openOficioModal(id, readOnly = false) {
           <span class="detail-label">Justificación de firmante <span class="required">*</span></span>
           <textarea id="det-justificacion" class="filter-select" style="width:100%;min-height:60px;resize:vertical" maxlength="255">${o.justificacion_firmante || ''}</textarea>
         </div>`}
+
+        <div class="detail-item full">
+          <span class="detail-label">Ámbito del oficio</span>
+          ${!readOnly
+            ? `<select id="det-ambito" class="filter-select" style="width:100%" onchange="applyDetVre()">
+                 <option value="interno" ${o.ambito === 'externo' ? '' : 'selected'}>Interno (logo INE)</option>
+                 <option value="externo" ${o.ambito === 'externo' ? 'selected' : ''}>Externo (Escudo Nacional de fondo)</option>
+               </select>
+               <label id="det-vre-wrap" style="display:${o.ambito === 'externo' ? 'flex' : 'none'};align-items:center;gap:8px;margin-top:8px;cursor:pointer;font-size:13px">
+                 <input type="checkbox" id="det-incluir-vre" ${o.incluir_vre != 0 ? 'checked' : ''} onchange="applyDetVre()" style="width:auto;cursor:pointer" />
+                 Incluir tabla Validó / Revisó / Elaboró
+               </label>`
+            : `<span class="detail-value">${o.ambito === 'externo' ? 'Externo (Escudo Nacional de fondo)' : 'Interno (logo INE)'}${o.ambito === 'externo' && o.incluir_vre == 0 ? ' · sin tabla Validó/Revisó/Elaboró' : ''}</span>`}
+        </div>
+
+        <div class="detail-item det-vre-field" style="grid-column:1/-1;border-top:1px solid var(--border,#e5e7eb);margin-top:4px;padding-top:8px;">
+          <span class="detail-label" style="font-size:11px;color:var(--text-muted);">Revisó / Elaboró (opcional — si vacío usa firmante/solicita)</span>
+        </div>
+        <div class="detail-item det-vre-field">
+          <span class="detail-label">Nombre — Revisó</span>
+          ${isAdmin
+            ? `<input type="text" id="det-reviso-nombre" class="filter-select" style="width:100%" maxlength="255" placeholder="(usa firmante si vacío)" value="${q(o.reviso_nombre || '')}">`
+            : `<span class="detail-value">${o.reviso_nombre || o.firmante_nombre || '—'}</span>`}
+        </div>
+        <div class="detail-item det-vre-field">
+          <span class="detail-label">Puesto — Revisó</span>
+          ${isAdmin
+            ? `<input type="text" id="det-reviso-puesto" class="filter-select" style="width:100%" maxlength="255" placeholder="(usa cargo firmante si vacío)" value="${q(o.reviso_puesto || '')}">`
+            : `<span class="detail-value">${o.reviso_puesto || o.firmante_cargo || '—'}</span>`}
+        </div>
+        <div class="detail-item det-vre-field">
+          <span class="detail-label">Nombre — Elaboró</span>
+          ${isAdmin
+            ? `<input type="text" id="det-elaboro-nombre" class="filter-select" style="width:100%" maxlength="255" placeholder="(usa solicita si vacío)" value="${q(o.elaboro_nombre || '')}">`
+            : `<span class="detail-value">${o.elaboro_nombre || o.solicita || '—'}</span>`}
+        </div>
+        <div class="detail-item det-vre-field">
+          <span class="detail-label">Puesto — Elaboró</span>
+          ${isAdmin
+            ? `<input type="text" id="det-elaboro-puesto" class="filter-select" style="width:100%" maxlength="255" placeholder="(usa área si vacío)" value="${q(o.elaboro_puesto || '')}">`
+            : `<span class="detail-value">${o.elaboro_puesto || o.area || '—'}</span>`}
+        </div>
 
         ${o.estatus === 'cancelado' ? `
         <div id="reactivacion-wrapper" class="detail-item full" style="display:none">
@@ -702,6 +730,7 @@ async function openOficioModal(id, readOnly = false) {
     `;
         openModal('modal-oficio');
         setupCharCounter('det-asunto', 500);
+        applyDetVre(); // estado inicial de la tabla Validó/Revisó/Elaboró según ámbito/checkbox
 
         if (!readOnly) document.getElementById('det-estatus').addEventListener('change', function () {
             document.getElementById('acuse-wrapper').style.display =
@@ -791,6 +820,13 @@ async function saveOficioChanges(id) {
     if (detIdSai) {
         body.id_sai = detIdSai.value.trim();
         body.justificacion_sai = document.getElementById('det-justificacion-sai')?.value?.trim() || '';
+    }
+
+    // Ámbito (interno/externo): editable por quien pueda editar, para corregir si se equivocó.
+    const detAmbito = document.getElementById('det-ambito');
+    if (detAmbito) {
+        body.ambito = detAmbito.value;
+        body.incluir_vre = document.getElementById('det-incluir-vre')?.checked !== false;
     }
 
     if (state.user.rol === 'admin') {
@@ -1278,6 +1314,8 @@ document.getElementById('nuevo-oficio-form').addEventListener('submit', async e 
               : {}; // "despues" → queda pendiente de SAI
         const body = {
             tipo,
+            ambito: document.getElementById('of-ambito').value,
+            incluir_vre: document.getElementById('of-incluir-vre').checked,
             fecha: document.getElementById('of-fecha').value,
             asunto: document.getElementById('of-asunto').value,
             sintesis: document.getElementById('of-sintesis').value || undefined,
@@ -1315,6 +1353,7 @@ document.getElementById('nuevo-oficio-form').addEventListener('submit', async e 
         document.getElementById('justificacion-group').style.display = 'none';
         applyTipoToggle(currentTipo);
         applySaiModoToggle();
+        applyAmbitoToggle();
         const todayAfter = cdmxToday();
         document.getElementById('of-fecha').value = todayAfter;
         document.getElementById('of-fecha-display').textContent = formatFecha(todayAfter);
@@ -1353,6 +1392,18 @@ document.getElementById('of-firmante').addEventListener('change', function () {
     }
 });
 
+// Ámbito interno/externo: en externo se puede elegir si incluir la tabla Validó/Revisó/Elaboró.
+function applyAmbitoToggle() {
+    const esExterno = document.getElementById('of-ambito').value === 'externo';
+    document.getElementById('of-vre-group').style.display = esExterno ? '' : 'none';
+    const incluirVre = document.getElementById('of-incluir-vre').checked;
+    const mostrarVre = !esExterno || incluirVre; // interno: siempre; externo: según checkbox
+    document.querySelectorAll('.vre-field').forEach(el => { el.style.display = mostrarVre ? '' : 'none'; });
+}
+document.getElementById('of-ambito').addEventListener('change', applyAmbitoToggle);
+document.getElementById('of-incluir-vre').addEventListener('change', applyAmbitoToggle);
+applyAmbitoToggle();
+
 // ID SAI: modo condicional (tengo el número / lo capturaré después / no aplica)
 function applySaiModoToggle() {
     const modo = document.getElementById('of-sai-modo').value;
@@ -1376,6 +1427,7 @@ document.getElementById('btn-limpiar').addEventListener('click', () => {
     document.getElementById('justificacion-group').style.display = 'none';
     applyTipoToggle(currentTipo);
     applySaiModoToggle();
+    applyAmbitoToggle();
     document.getElementById('numero-preview').classList.add('hidden');
     document.getElementById('nuevo-error').classList.add('hidden');
     const todayClean = cdmxToday();

@@ -305,7 +305,14 @@
         </div>
         <form id="nuevo-oficio-form" class="oficio-form card">
           <div class="form-grid">
-            <div class="form-group">
+            <div class="form-group col-2">
+              <label for="of-ambito">Ámbito del oficio <span class="required">*</span></label>
+              <select id="of-ambito">
+                <option value="interno">Interno (logo INE)</option>
+                <option value="externo">Externo (Escudo Nacional de fondo)</option>
+              </select>
+            </div>
+            <div class="form-group col-2">
               <label>Fecha de Emisión</label>
               <div id="of-fecha-display" style="padding:8px 12px;background:var(--bg-secondary,#f8f5fb);border:1.5px solid var(--border,#e2d9ee);border-radius:8px;font-size:14px;color:var(--text,#1f2937);min-height:38px;display:flex;align-items:center;">—</div>
               <input type="hidden" id="of-fecha" />
@@ -404,22 +411,29 @@
               <input type="hidden" id="of-area" />
             </div>
 
-            <div class="form-group col-full" style="border-top:1px solid var(--border,#e5e7eb);padding-top:12px;margin-top:4px;">
+            <!-- Solo para EXTERNO: elegir si se incluye la tabla Validó/Revisó/Elaboró -->
+            <div class="form-group col-full" id="of-vre-group" style="display:none">
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600">
+                <input type="checkbox" id="of-incluir-vre" checked style="width:auto;cursor:pointer" />
+                Incluir tabla Validó / Revisó / Elaboró
+              </label>
+            </div>
+            <div class="form-group col-full vre-field" style="border-top:1px solid var(--border,#e5e7eb);padding-top:12px;margin-top:4px;">
               <span style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted,#6b7280);">Revisó / Elaboró <span style="font-weight:400;text-transform:none;">(opcional)</span></span>
             </div>
-            <div class="form-group col-2">
+            <div class="form-group col-2 vre-field">
               <label for="of-reviso-nombre">Nombre — Revisó</label>
               <input type="text" id="of-reviso-nombre" placeholder="Nombre completo" maxlength="255" />
             </div>
-            <div class="form-group col-2">
+            <div class="form-group col-2 vre-field">
               <label for="of-reviso-puesto">Puesto — Revisó</label>
               <input type="text" id="of-reviso-puesto" placeholder="Cargo o puesto" maxlength="255" />
             </div>
-            <div class="form-group col-2">
+            <div class="form-group col-2 vre-field">
               <label for="of-elaboro-nombre">Nombre — Elaboró</label>
               <input type="text" id="of-elaboro-nombre" placeholder="Nombre completo" maxlength="255" />
             </div>
-            <div class="form-group col-2">
+            <div class="form-group col-2 vre-field">
               <label for="of-elaboro-puesto">Puesto — Elaboró</label>
               <input type="text" id="of-elaboro-puesto" placeholder="Cargo o puesto" maxlength="255" />
             </div>

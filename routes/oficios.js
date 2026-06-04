@@ -155,6 +155,9 @@ router.get('/:id', (req, res) => {
 router.post('/generar', (req, res) => {
   const { fecha, destinatario, cargo_destinatario, institucion, asunto, cuerpo, id_sai, justificacion_sai, sintesis, firmante_id, justificacion_firmante, razon, solicita, area, url_solicitante, reviso_nombre, reviso_puesto, elaboro_nombre, elaboro_puesto } = req.body;
   const tipo            = ['oficio', 'opinion', 'dictamen', 'certificacion'].includes(req.body.tipo) ? req.body.tipo : 'oficio';
+  const ambito          = req.body.ambito === 'externo' ? 'externo' : 'interno';
+  // Tabla Validó/Revisó/Elaboró: en interno siempre va; en externo es opcional.
+  const incluirVre      = (ambito === 'externo' && (req.body.incluir_vre === false || req.body.incluir_vre === 0 || req.body.incluir_vre === '0' || req.body.incluir_vre === 'false')) ? 0 : 1;
   const isOpinion       = tipo === 'opinion';
   const isDictamen      = tipo === 'dictamen';
   const isCertificacion = tipo === 'certificacion';
@@ -199,7 +202,7 @@ router.post('/generar', (req, res) => {
     else if (isCertificacion) db.prepare(`UPDATE anios_config SET correlativo_certificacion_actual  = ? WHERE id = ?`).run(nuevoCorrelativo, row.id);
     else                      db.prepare(`UPDATE anios_config SET correlativo_actual                = ? WHERE id = ?`).run(nuevoCorrelativo, row.id);
 
-    db.prepare(`INSERT INTO oficios (numero_oficio, correlativo, anio, tipo, fecha, destinatario, cargo_destinatario, institucion, asunto, cuerpo, id_sai, justificacion_sai, sintesis, firmante_id, requiere_justificacion, justificacion_firmante, razon, solicita, area, url_solicitante, reviso_nombre, reviso_puesto, elaboro_nombre, elaboro_puesto, creado_por) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    db.prepare(`INSERT INTO oficios (numero_oficio, correlativo, anio, tipo, fecha, destinatario, cargo_destinatario, institucion, asunto, cuerpo, id_sai, justificacion_sai, sintesis, firmante_id, requiere_justificacion, justificacion_firmante, razon, solicita, area, url_solicitante, reviso_nombre, reviso_puesto, elaboro_nombre, elaboro_puesto, creado_por, ambito, incluir_vre) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(numeroOficio, nuevoCorrelativo, row.anio, tipo, fecha,
            destinatario || '', cargo_destinatario || '', institucion || null,
            asunto, cuerpo || null, idSaiVal || null, justSaiVal, sintesis || null,
@@ -208,7 +211,7 @@ router.post('/generar', (req, res) => {
            url_solicitante || null,
            reviso_nombre || null, reviso_puesto || null,
            elaboro_nombre || null, elaboro_puesto || null,
-           req.user.id);
+           req.user.id, ambito, incluirVre);
 
     return db.prepare(`SELECT o.*, f.nombre as firmante_nombre, f.cargo as firmante_cargo, u.nombre as creado_por_nombre ${JOIN} WHERE o.numero_oficio = ?`).get(numeroOficio);
   });
@@ -550,7 +553,7 @@ router.get('/carga-masiva/plantilla', async (req, res) => {
 
 // PUT /api/oficios/:id
 router.put('/:id', (req, res) => {
-  const { estatus, fecha, destinatario, cargo_destinatario, institucion, asunto, cuerpo, id_sai, justificacion_sai, sintesis, firmante_id, justificacion_firmante, razon, solicita, area, url_solicitante, razon_reactivacion, reviso_nombre, reviso_puesto, elaboro_nombre, elaboro_puesto } = req.body;
+  const { estatus, fecha, destinatario, cargo_destinatario, institucion, asunto, cuerpo, id_sai, justificacion_sai, sintesis, firmante_id, justificacion_firmante, razon, solicita, area, url_solicitante, razon_reactivacion, reviso_nombre, reviso_puesto, elaboro_nombre, elaboro_puesto, ambito, incluir_vre } = req.body;
   const ownerClause = req.user.rol !== 'admin' ? 'AND creado_por = ?' : '';
   const checkParams = req.user.rol !== 'admin' ? [req.params.id, req.user.id] : [req.params.id];
   if (!db.prepare(`SELECT id FROM oficios WHERE id = ? ${ownerClause}`).get(...checkParams)) {
@@ -598,6 +601,8 @@ router.put('/:id', (req, res) => {
   if (url_solicitante !== undefined)  { sets.push('url_solicitante = ?'); params.push(url_solicitante || null); }
   if (razon_reactivacion !== undefined) { sets.push('razon_reactivacion = ?'); params.push(razon_reactivacion || null); }
   if (cuerpo !== undefined)           { sets.push('cuerpo = ?'); params.push(cuerpo || null); }
+  if (ambito !== undefined)           { sets.push('ambito = ?'); params.push(ambito === 'externo' ? 'externo' : 'interno'); }
+  if (incluir_vre !== undefined)      { sets.push('incluir_vre = ?'); params.push((incluir_vre === false || incluir_vre === 0 || incluir_vre === '0' || incluir_vre === 'false') ? 0 : 1); }
   // ID SAI y justificación de SAI: mutuamente excluyentes. Si llega el ID SAI, gana y se limpia la justificación.
   if (id_sai !== undefined || justificacion_sai !== undefined) {
     const idv = id_sai ? String(id_sai).trim() : '';

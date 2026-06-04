@@ -4,6 +4,7 @@ const {
   Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, ImageRun,
   AlignmentType, BorderStyle, WidthType, Header, Footer, VerticalAlign,
   convertInchesToTwip, FootnoteReferenceRun,
+  HorizontalPositionRelativeFrom, VerticalPositionRelativeFrom, PageNumber,
 } = require('docx');
 const fs = require('fs');
 const path = require('path');
@@ -15,6 +16,12 @@ function getLogoBuffer() {
   if (fs.existsSync(LOGO_PATH)) return fs.readFileSync(LOGO_PATH);
   const { generateINELogoBuffer } = require('../utils/logo');
   return generateINELogoBuffer();
+}
+
+// Escudo Nacional de fondo (oficios externos): cubre toda la hoja como marca de agua.
+const ESCUDO_PATH = path.join(__dirname, '..', 'fondo_verde.png');
+function getEscudoBuffer() {
+  return fs.existsSync(ESCUDO_PATH) ? fs.readFileSync(ESCUDO_PATH) : null;
 }
 
 const router = express.Router();
@@ -238,6 +245,37 @@ router.get('/docx/:id', async (req, res) => {
       ]})],
     });
 
+    // ── Oficio EXTERNO: sin logo, con el Escudo Nacional de fondo a toda la hoja ──
+    const esExterno = o.ambito === 'externo';
+    const escudoBuffer = esExterno ? getEscudoBuffer() : null;
+    // Tabla Validó/Revisó/Elaboró: en interno siempre; en externo solo si se eligió incluirla.
+    const mostrarVre = !esExterno || o.incluir_vre != 0;
+    // Footer del externo: solo el número de página (sin la tablita de oficialía de partes).
+    const footerExterno = [
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 0 },
+        children: [new TextRun({ children: [PageNumber.CURRENT, ' de ', PageNumber.TOTAL_PAGES], font: FONT, size: PT9 })],
+      }),
+    ];
+    const headerExterno = [
+      ...(escudoBuffer ? [new Paragraph({ children: [
+        new ImageRun({
+          data: escudoBuffer,
+          transformation: { width: 816, height: 1056 }, // carta 8.5"×11" @96dpi (cubre la hoja)
+          type: 'png',
+          floating: {
+            horizontalPosition: { relative: HorizontalPositionRelativeFrom.PAGE, offset: 0 },
+            verticalPosition:   { relative: VerticalPositionRelativeFrom.PAGE,   offset: 0 },
+            behindDocument: true,
+            allowOverlap: true,
+          },
+        }),
+      ]})] : []),
+      new Paragraph({ alignment: AlignmentType.RIGHT, spacing: { before: 300, after: 0, line: 360 }, children: [run('Dirección Ejecutiva de Asuntos Jurídicos', { bold: true })] }),
+      new Paragraph({ alignment: AlignmentType.RIGHT, spacing: { after: 0, line: 360 }, children: [run(`Oficio ${o.numero_oficio}`, { bold: true })] }),
+    ];
+    const headerChildren = esExterno ? headerExterno : [headerTable];
 
     const NOTA_FUNDAMENTO = 'Con fundamento en el artículo 45, numeral 1, inciso p) de la Ley General de Instituciones y Procedimientos Electorales y de conformidad con el oficio INE/PC/193/2026';
     const esTitular = !o.requiere_justificacion;
@@ -270,10 +308,10 @@ router.get('/docx/:id', async (req, res) => {
           },
         },
         headers: {
-          default: new Header({ children: [headerTable] }),
+          default: new Header({ children: headerChildren }),
         },
         footers: {
-          default: new Footer({ children: [
+          default: new Footer({ children: esExterno ? footerExterno : [
             new Table({
               width: { size: 100, type: WidthType.PERCENTAGE },
               borders: NO_BORDERS,
@@ -383,17 +421,18 @@ router.get('/docx/:id', async (req, res) => {
             ],
           }),
 
-          empty(80),
-
-          // ── Tabla Validó/Revisó/Elaboró ──
-          new Table({
-            width: { size: 85, type: WidthType.PERCENTAGE },
-            rows: [
-              vreRow('Validó',  o.firmante_nombre, o.firmante_cargo),
-              vreRow('Revisó',  o.reviso_nombre  || o.firmante_nombre, o.reviso_puesto  || o.firmante_cargo),
-              vreRow('Elaboró', o.elaboro_nombre || o.solicita,        o.elaboro_puesto || o.area),
-            ],
-          }),
+          // ── Tabla Validó/Revisó/Elaboró (interno siempre; externo solo si se eligió) ──
+          ...(mostrarVre ? [
+            empty(80),
+            new Table({
+              width: { size: 85, type: WidthType.PERCENTAGE },
+              rows: [
+                vreRow('Validó',  o.firmante_nombre, o.firmante_cargo),
+                vreRow('Revisó',  o.reviso_nombre  || o.firmante_nombre, o.reviso_puesto  || o.firmante_cargo),
+                vreRow('Elaboró', o.elaboro_nombre || o.solicita,        o.elaboro_puesto || o.area),
+              ],
+            }),
+          ] : []),
 
 
         ],
