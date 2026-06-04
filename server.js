@@ -38,6 +38,5 @@ app.use((err, req, res, next) => {
 
 app.listen(PORT, () => {
   console.log(`\n🚀 SiCoDEAJ — Sistema de Control Documental DEAJ corriendo en http://localhost:${PORT}`);
-  console.log(`👤 Admin inicial: admin@deaj.ine.mx / Admin1234!`);
   console.log(`📋 Correlativo 2026 iniciando en: 8411\n`);
 });

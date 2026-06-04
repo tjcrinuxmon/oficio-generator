@@ -105,11 +105,16 @@ const JOIN = `
   LEFT JOIN usuarios u ON o.creado_por = u.id
 `;
 
-function buildWhere(query, userId, rol) {
+function buildWhere(query, userId, rol, userArea) {
   const { estatus, area, firmante_id, fecha_inicio, fecha_fin, q, tipo } = query;
   const where = ['1=1'];
   const params = [];
-  if (rol !== 'admin') { where.push('o.creado_por = ?'); params.push(userId); }
+  // Enlace: ve todos los oficios de SU dirección (área). Otros no-admin: solo los propios.
+  if (rol === 'enlace') {
+    where.push('o.area = ?'); params.push(userArea || '');
+  } else if (rol !== 'admin') {
+    where.push('o.creado_por = ?'); params.push(userId);
+  }
   if (estatus)      { where.push('o.estatus = ?'); params.push(estatus); }
   if (area)         { where.push('o.area LIKE ?'); params.push(`%${area}%`); }
   if (firmante_id)  { where.push('o.firmante_id = ?'); params.push(parseInt(firmante_id)); }
@@ -126,15 +131,21 @@ function buildWhere(query, userId, rol) {
 
 // GET /api/oficios
 router.get('/', (req, res) => {
-  const { clause, params } = buildWhere(req.query, req.user.id, req.user.rol);
+  const { clause, params } = buildWhere(req.query, req.user.id, req.user.rol, req.user.area);
   const sql = `SELECT o.*, f.nombre as firmante_nombre, f.cargo as firmante_cargo, f.es_titular, u.nombre as creado_por_nombre ${JOIN} WHERE ${clause} ORDER BY o.id DESC`;
   res.json(db.prepare(sql).all(...params));
 });
 
 // GET /api/oficios/:id
 router.get('/:id', (req, res) => {
-  const ownerClause = req.user.rol !== 'admin' ? 'AND o.creado_por = ?' : '';
-  const params = req.user.rol !== 'admin' ? [req.params.id, req.user.id] : [req.params.id];
+  // Enlace accede a oficios de su dirección; otros no-admin, solo a los propios.
+  let ownerClause = '';
+  const params = [req.params.id];
+  if (req.user.rol === 'enlace') {
+    ownerClause = 'AND o.area = ?'; params.push(req.user.area || '');
+  } else if (req.user.rol !== 'admin') {
+    ownerClause = 'AND o.creado_por = ?'; params.push(req.user.id);
+  }
   const row = db.prepare(`SELECT o.*, f.nombre as firmante_nombre, f.cargo as firmante_cargo, f.es_titular, u.nombre as creado_por_nombre ${JOIN} WHERE o.id = ? ${ownerClause}`).get(...params);
   if (!row) return res.status(404).json({ error: 'Oficio no encontrado' });
   res.json(row);
