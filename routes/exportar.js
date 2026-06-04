@@ -78,6 +78,7 @@ function shortArea(a) {
 
 // GET /api/exportar/excel
 router.get('/excel', async (req, res) => {
+  try {
   const rows = getOficios(req.query, req.user);
 
   const wb = new ExcelJS.Workbook();
@@ -93,7 +94,7 @@ router.get('/excel', async (req, res) => {
   ws.getColumn(1).width = 8;
   ws.getColumn(2).width = 8;
 
-  const logoId = wb.addImage({ buffer: generateINELogoBuffer(), extension: 'png' });
+  const logoId = wb.addImage({ buffer: getLogoBuffer(), extension: 'png' });
   ws.addImage(logoId, { tl: { col: 0, row: 0 }, br: { col: 2, row: 1 }, editAs: 'absolute' });
 
   ws.mergeCells('C1:K1');
@@ -143,6 +144,10 @@ router.get('/excel', async (req, res) => {
   res.setHeader('Content-Disposition', 'attachment; filename="Documentos_DEAJ.xlsx"');
   await wb.xlsx.write(res);
   res.end();
+  } catch (e) {
+    console.error('[exportar/excel]', e.message);
+    if (!res.headersSent) res.status(500).json({ error: 'Error al exportar el Excel: ' + e.message });
+  }
 });
 
 // GET /api/exportar/docx/:id
