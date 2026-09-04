@@ -226,6 +226,7 @@ async function loadDashboard() {
         const ots = oficios.filter(o => o.tipo === 'opinion');
         const dts  = oficios.filter(o => o.tipo === 'dictamen');
         const cts  = oficios.filter(o => o.tipo === 'certificacion');
+        const cvs  = oficios.filter(o => o.tipo === 'cvic');
 
         // Stats oficios
         document.getElementById('of-total').textContent = ofs.length;
@@ -247,6 +248,11 @@ async function loadDashboard() {
         document.getElementById('ct-borrador').textContent = cts.filter(o => o.estatus === 'borrador').length;
         document.getElementById('ct-archivado').textContent = cts.filter(o => o.estatus === 'archivado').length;
 
+        // Stats CVIC
+        document.getElementById('cv-total').textContent = cvs.length;
+        document.getElementById('cv-borrador').textContent = cvs.filter(o => o.estatus === 'borrador').length;
+        document.getElementById('cv-archivado').textContent = cvs.filter(o => o.estatus === 'archivado').length;
+
         // Aviso de pendientes de ID SAI (sobre todos los oficios visibles para el usuario)
         const pendientesSai = oficios.filter(o => saiEstado(o).key === 'pendiente').length;
         const saiAlert = document.getElementById('dash-sai-alert');
@@ -261,6 +267,7 @@ async function loadDashboard() {
         renderRecientes('dash-recientes-opinion', ots.slice(0, 5), 'No hay opiniones técnicas registradas aún.');
         renderRecientes('dash-recientes-dictamen', dts.slice(0, 5), 'No hay dictámenes registrados aún.');
         renderRecientes('dash-recientes-certificacion', cts.slice(0, 5), 'No hay certificaciones registradas aún.');
+        renderRecientes('dash-recientes-cvic', cvs.slice(0, 5), 'No hay oficios CVIC registrados aún.');
     } catch (e) {
         toast(e.message, 'error');
     }
@@ -300,11 +307,13 @@ function renderHistorialTable(oficios) {
     const isOpinion       = tipo === 'opinion';
     const isDictamen      = tipo === 'dictamen';
     const isCertificacion = tipo === 'certificacion';
+    const isCvic          = tipo === 'cvic';
 
     const colHeader = isOficio        ? '<th>Destinatario</th>'
                     : isOpinion       ? '<th>Requirente</th>'
                     : isDictamen      ? '<th>Requirente</th>'
                     : isCertificacion ? '<th>Destinatario</th>'
+                    : isCvic          ? '<th>Destinatario</th>'
                     :                   '<th>Tipo</th>';
 
     thead.innerHTML = `
@@ -331,11 +340,13 @@ function renderHistorialTable(oficios) {
             opinion:       '<span class="tipo-badge tipo-opinion">Opinión</span>',
             dictamen:      '<span class="tipo-badge tipo-dictamen">Dictamen</span>',
             certificacion: '<span class="tipo-badge tipo-certificacion">Certificación</span>',
+            cvic:          '<span class="tipo-badge tipo-cvic">CVIC</span>',
         };
         const colCell = isOficio        ? `<td class="td-truncate" title="${o.destinatario || ''}">${o.destinatario || '—'}</td>`
                       : isOpinion       ? `<td class="td-truncate" title="${o.url_solicitante || ''}">${o.url_solicitante || '—'}</td>`
                       : isDictamen      ? `<td class="td-truncate" title="${o.url_solicitante || ''}">${o.url_solicitante || '—'}</td>`
                       : isCertificacion ? `<td class="td-truncate" title="${o.destinatario || ''}">${o.destinatario || '—'}</td>`
+                      : isCvic          ? `<td class="td-truncate" title="${o.destinatario || ''}">${o.destinatario || '—'}</td>`
                       : `<td>${TIPO_BADGES[o.tipo] || TIPO_BADGES.oficio}</td>`;
         return `
     <tr>
@@ -348,7 +359,7 @@ function renderHistorialTable(oficios) {
       <td><span class="status-badge status-${o.estatus}">${labelEstatus(o.estatus)}</span>${saiEstado(o).key === 'pendiente' ? `<br><span class="status-badge" style="background:#fee2e2;color:#b91c1c;margin-top:4px;display:inline-block" title="Falta capturar el ID SAI">⚠ Sin ID SAI</span>` : ''}</td>
       <td>
         ${o.acuse_path
-            ? `<button class="btn-acuse-si" data-id="${o.id}" title="Descargar acuse"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg></button>`
+            ? (() => { const n = o.adjuntos_count || 1; return `<button class="btn-acuse-si" data-id="${o.id}" data-count="${n}" title="${n > 1 ? n + ' documentos — abrir para elegir cuál descargar' : 'Descargar acuse'}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>${n > 1 ? `<span class="acuse-count">${n}</span>` : ''}</button>`; })()
             : '<span class="acuse-no">—</span>'}
       </td>
       <td>
@@ -358,7 +369,12 @@ function renderHistorialTable(oficios) {
     }).join('');
 
     tbody.querySelectorAll('.btn-acuse-si').forEach(el =>
-        el.addEventListener('click', () => downloadAcuse(el.dataset.id))
+        el.addEventListener('click', () => {
+            const n = parseInt(el.dataset.count) || 1;
+            // Con varios documentos, abre el detalle para elegir cuál descargar; con uno, baja directo.
+            if (n > 1) openOficioModal(el.dataset.id, true);
+            else downloadAcuse(el.dataset.id);
+        })
     );
 
     renderPagination(total);
@@ -408,15 +424,25 @@ function renderPagination(total) {
 // ── Selector de tipo ─────────────────────────────────
 function selectTipo(tipo) {
     currentTipo = tipo;
-    const titles    = { oficio: 'Nuevo Oficio', opinion: 'Nueva Opinión Técnica', dictamen: 'Nuevo Dictamen', certificacion: 'Nueva Certificación' };
-    const badges    = { oficio: 'Oficio', opinion: 'Opinión Técnica', dictamen: 'Dictamen', certificacion: 'Certificación' };
-    const btnLabels = { oficio: '✉️ Generar Oficio', opinion: '✉️ Generar Opinión Técnica', dictamen: '📋 Generar Dictamen', certificacion: '🏅 Generar Certificación' };
+    const titles    = { oficio: 'Nuevo Oficio', opinion: 'Nueva Opinión Técnica', dictamen: 'Nuevo Dictamen', certificacion: 'Nueva Certificación', cvic: 'Nuevo Oficio CVIC' };
+    const badges    = { oficio: 'Oficio', opinion: 'Opinión Técnica', dictamen: 'Dictamen', certificacion: 'Certificación', cvic: 'Oficio CVIC' };
+    const btnLabels = { oficio: '✉️ Generar Oficio', opinion: '✉️ Generar Opinión Técnica', dictamen: '📋 Generar Dictamen', certificacion: '🏅 Generar Certificación', cvic: '✉️ Generar Oficio CVIC' };
     document.getElementById('form-title').textContent = titles[tipo] || 'Nuevo Oficio';
     const badge = document.getElementById('form-tipo-badge');
     badge.className = `tipo-badge tipo-${tipo}`;
     badge.textContent = badges[tipo] || 'Oficio';
     document.querySelector('#btn-generar .btn-text').textContent = btnLabels[tipo] || '✉️ Generar Oficio';
     applyTipoToggle(tipo);
+    // SAI por defecto: CVIC normalmente no va por SAI → "No aplica" con justificación precargada.
+    const saiModo = document.getElementById('of-sai-modo');
+    if (saiModo) {
+        saiModo.value = tipo === 'cvic' ? 'no_aplica' : 'tengo';
+        applySaiModoToggle();
+        if (tipo === 'cvic') {
+            const jsai = document.getElementById('of-justificacion-sai');
+            if (jsai && !jsai.value.trim()) jsai.value = 'No aplica a oficios de la Comisión de Verificación de Integridad en Candidaturas.';
+        }
+    }
     document.getElementById('numero-preview').classList.add('hidden');
     document.getElementById('numero-generado').textContent = '';
     showView('nuevo');
@@ -427,7 +453,7 @@ async function loadNuevo() {
     document.getElementById('numero-preview').classList.add('hidden');
     document.getElementById('numero-generado').textContent = '';
     try {
-        const firmantes = await api('GET', '/firmantes');
+        const firmantes = await api('GET', `/firmantes?tipo=${currentTipo}`);
         state.firmantes = firmantes;
         const sel = document.getElementById('of-firmante');
         sel.innerHTML = '<option value="">— Seleccionar firmante —</option>' +
@@ -463,13 +489,12 @@ function applyDetVre() {
 // ── Modal Oficio Detalle ──────────────────────────────
 async function openOficioModal(id, readOnly = false) {
     try {
-        const [o, firmantes] = await Promise.all([
-            api('GET', `/oficios/${id}`),
-            state.firmantes.length ? Promise.resolve(state.firmantes) : api('GET', '/firmantes'),
-        ]);
+        const o = await api('GET', `/oficios/${id}`);
+        const firmantes = await api('GET', `/firmantes?tipo=${o.tipo || 'oficio'}`);
         state.firmantes = firmantes;
         const currentFirmante = firmantes.find(f => f.id == o.firmante_id);
-        const currentIsNoTitular = currentFirmante && !currentFirmante.es_titular;
+        // CVIC lo firma el Presidente de la Comisión: no aplica la justificación de "no titular DEAJ".
+        const currentIsNoTitular = currentFirmante && !currentFirmante.es_titular && o.tipo !== 'cvic';
 
         const estatusDisponibles = o.acuse_path
             ? ['archivado', 'cancelado']
@@ -488,6 +513,7 @@ async function openOficioModal(id, readOnly = false) {
         const isOpinion       = o.tipo === 'opinion';
         const isDictamen      = o.tipo === 'dictamen';
         const isCertificacion = o.tipo === 'certificacion';
+        const isCvic          = o.tipo === 'cvic';
         const needsUR         = isOpinion || isDictamen;
         const q = s => (s || '').replace(/"/g, '&quot;');
         const areaOpts = AREAS.map(a => `<option value="${a}" ${o.area === a ? 'selected' : ''}>${a}</option>`).join('');
@@ -498,8 +524,8 @@ async function openOficioModal(id, readOnly = false) {
       <div class="detail-grid">
         <div class="detail-item full">
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
-            <span class="detail-label">${isDictamen ? 'Número de Dictamen' : isCertificacion ? 'Número de Certificación' : isOpinion ? 'Número de Opinión Técnica' : 'Número de Oficio'}</span>
-            ${isDictamen ? '<span class="tipo-badge tipo-dictamen">Dictamen</span>' : isCertificacion ? '<span class="tipo-badge tipo-certificacion">Certificación</span>' : isOpinion ? '<span class="tipo-badge tipo-opinion">Opinión Técnica</span>' : '<span class="tipo-badge tipo-oficio">Oficio</span>'}
+            <span class="detail-label">${isDictamen ? 'Número de Dictamen' : isCertificacion ? 'Número de Certificación' : isOpinion ? 'Número de Opinión Técnica' : isCvic ? 'Número de Oficio CVIC' : 'Número de Oficio'}</span>
+            ${isDictamen ? '<span class="tipo-badge tipo-dictamen">Dictamen</span>' : isCertificacion ? '<span class="tipo-badge tipo-certificacion">Certificación</span>' : isOpinion ? '<span class="tipo-badge tipo-opinion">Opinión Técnica</span>' : isCvic ? '<span class="tipo-badge tipo-cvic">Oficio CVIC</span>' : '<span class="tipo-badge tipo-oficio">Oficio</span>'}
           </div>
           <span class="detail-numero">${o.numero_oficio}</span>
         </div>
@@ -615,7 +641,7 @@ async function openOficioModal(id, readOnly = false) {
         </div>`}
 
         <div class="detail-item full">
-          <span class="detail-label">Ámbito del oficio</span>
+          <span class="detail-label">Ámbito del documento</span>
           ${!readOnly
             ? `<select id="det-ambito" class="filter-select" style="width:100%" onchange="applyDetVre()">
                  <option value="interno" ${o.ambito === 'externo' ? '' : 'selected'}>Interno (logo INE)</option>
@@ -671,48 +697,9 @@ async function openOficioModal(id, readOnly = false) {
 
         <div class="detail-item full acuse-section">
           <div class="acuse-section-header">
-            <span class="detail-label">Acuse de recibo</span>
-            ${o.acuse_path ? '<span class="acuse-badge">PDF adjunto</span>' : ''}
+            <span class="detail-label">Acuses / documentos (hasta 3)</span>
           </div>
-
-          ${o.acuse_path ? `
-          <div class="acuse-attached-row">
-            <div class="acuse-attached-info">
-              <svg class="acuse-pdf-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>
-              <div style="min-width:0;overflow:hidden;">
-                <div class="acuse-file-name">Acuse — ${o.numero_oficio}</div>
-                <div class="acuse-file-hint">Vinculado a este documento</div>
-              </div>
-            </div>
-            <div class="acuse-attached-btns">
-              <button class="btn btn-secondary btn-sm" onclick="viewAcuse(${o.id})">Ver</button>
-              <button class="btn btn-secondary btn-sm" onclick="downloadAcuse(${o.id})">Descargar</button>
-              ${!readOnly ? `<button class="btn btn-danger btn-sm" onclick="deleteAcuse(${o.id})">Eliminar</button>` : ''}
-            </div>
-          </div>
-          <div class="acuse-replace-label">Reemplazar archivo:</div>
-          ` : ''}
-
-          <div class="acuse-dropzone" id="acuse-dropzone" style="${readOnly ? 'display:none' : ''}" onclick="document.getElementById('det-acuse-file').click()">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-            <div>
-              <div class="acuse-dropzone-main">${o.acuse_path ? 'Seleccionar nuevo PDF' : 'Seleccionar PDF'}</div>
-              <div class="acuse-dropzone-hint">${o.acuse_path
-                ? 'El nuevo archivo <strong>reemplazará</strong> el acuse actual'
-                : `El archivo quedará vinculado al documento <strong>${o.numero_oficio}</strong>`}
-              </div>
-            </div>
-          </div>
-          <input type="file" id="det-acuse-file" accept=".pdf" style="display:none" onchange="onAcuseFileSelected(this,${o.id})" />
-
-          <div id="acuse-selected-row" class="acuse-selected-row hidden">
-            <svg class="acuse-pdf-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>
-            <span id="acuse-selected-name" class="acuse-file-name"></span>
-            <button class="btn btn-primary btn-sm acuse-btn-icon" id="acuse-upload-btn">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-              Subir acuse
-            </button>
-          </div>
+          <div id="acuse-list"><div class="acuse-file-hint" style="padding:6px 0">Cargando…</div></div>
         </div>
         </div>
       </div>
@@ -731,6 +718,7 @@ async function openOficioModal(id, readOnly = false) {
         openModal('modal-oficio');
         setupCharCounter('det-asunto', 500);
         applyDetVre(); // estado inicial de la tabla Validó/Revisó/Elaboró según ámbito/checkbox
+        renderAcuses(o.id, readOnly); // lista de adjuntos (hasta 3)
 
         if (!readOnly) document.getElementById('det-estatus').addEventListener('change', function () {
             document.getElementById('acuse-wrapper').style.display =
@@ -745,7 +733,7 @@ async function openOficioModal(id, readOnly = false) {
             const f = state.firmantes.find(f => f.id == this.value);
             const wrapper = document.getElementById('justif-firmante-wrapper');
             if (!wrapper) return;
-            if (f && !f.es_titular) {
+            if (f && !f.es_titular && o.tipo !== 'cvic') {
                 wrapper.style.display = '';
             } else {
                 wrapper.style.display = 'none';
@@ -950,15 +938,98 @@ async function deleteAcuse(id) {
     }
 }
 
+// ── Acuses / adjuntos (hasta 3) ──────────────────────
+async function renderAcuses(id, readOnly = false) {
+    const cont = document.getElementById('acuse-list');
+    if (!cont) return;
+    let items = [];
+    try { items = await api('GET', `/oficios/${id}/acuses`); }
+    catch (e) { cont.innerHTML = `<div class="acuse-file-hint">${e.message}</div>`; return; }
+    const pdfIcon = `<svg class="acuse-pdf-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>`;
+    const rows = items.map((a, i) => {
+        const nombre = (a.original_name || `Documento ${i + 1}`).replace(/"/g, '&quot;');
+        const kb = a.size ? Math.max(1, Math.round(a.size / 1024)) + ' KB · ' : '';
+        return `
+        <div class="acuse-item">
+          <div class="acuse-item-head">
+            ${pdfIcon}
+            <div class="acuse-item-meta">
+              <div class="acuse-file-name" title="${nombre}">${nombre}</div>
+              <div class="acuse-file-hint">${kb}${formatFecha(a.creado_en)}</div>
+            </div>
+          </div>
+          <div class="acuse-attached-btns">
+            <button class="btn btn-secondary btn-sm" onclick="viewAcuseItem(${id},${a.id})">Ver</button>
+            <button class="btn btn-secondary btn-sm" onclick="downloadAcuseItem(${id},${a.id},'${nombre.replace(/'/g, "\\'")}')">Descargar</button>
+            ${!readOnly ? `<button class="btn btn-danger btn-sm" onclick="deleteAcuseItem(${id},${a.id})">Eliminar</button>` : ''}
+          </div>
+        </div>`;
+    }).join('');
+    let addArea = '';
+    if (!readOnly && items.length < 3) {
+        addArea = `
+        <div class="acuse-add-row">
+          <input type="file" id="det-acuse-file" accept=".pdf" />
+          <button class="btn btn-primary btn-sm" onclick="addAcuse(${id})">⬆ Agregar</button>
+        </div>
+        <div class="acuse-dropzone-hint" style="margin-top:6px">PDF · hasta 3 archivos (oficio, medio de notificación, oficio firmado, etc.). ${items.length}/3 subidos.</div>`;
+    } else if (!readOnly && items.length >= 3) {
+        addArea = `<div class="acuse-dropzone-hint" style="margin-top:8px">Máximo de 3 archivos alcanzado. Elimina uno para agregar otro.</div>`;
+    }
+    cont.innerHTML = (items.length ? rows : '<div class="acuse-file-hint" style="padding:4px 0 8px">Sin documentos aún.</div>') + addArea;
+}
+
+async function addAcuse(id) {
+    const file = document.getElementById('det-acuse-file')?.files[0];
+    if (!file) { toast('Selecciona un archivo PDF', 'error'); return; }
+    const fd = new FormData(); fd.append('acuse', file);
+    try {
+        await api('POST', `/oficios/${id}/acuse`, fd, true);
+        toast('Documento agregado', 'success');
+        const sel = document.getElementById('det-estatus');
+        if (sel) { sel.value = 'archivado'; document.getElementById('acuse-wrapper').style.display = ''; }
+        await renderAcuses(id);
+        if (state.view === 'historial') loadHistorial();
+        if (state.view === 'dashboard') loadDashboard();
+    } catch (e) { toast(e.message, 'error'); }
+}
+
+async function deleteAcuseItem(id, adjId) {
+    if (!confirm('¿Eliminar este documento? Si es el último, el oficio regresa a Borrador.')) return;
+    try {
+        await api('DELETE', `/oficios/${id}/acuse/${adjId}`);
+        toast('Documento eliminado', 'success');
+        await renderAcuses(id);
+        if (state.view === 'historial') loadHistorial();
+        if (state.view === 'dashboard') loadDashboard();
+    } catch (e) { toast(e.message, 'error'); }
+}
+
+async function viewAcuseItem(id, adjId) {
+    try {
+        const res = await fetch(`/api/oficios/${id}/acuse/${adjId}`, { headers: { Authorization: `Bearer ${state.token}` } });
+        if (!res.ok) { toast('Archivo no disponible', 'error'); return; }
+        const blob = await res.blob();
+        window.open(URL.createObjectURL(new Blob([await blob.arrayBuffer()], { type: 'application/pdf' })), '_blank');
+    } catch (e) { toast(e.message, 'error'); }
+}
+
+function downloadAcuseItem(id, adjId, name) {
+    const fn = (name && name.toLowerCase().endsWith('.pdf')) ? name : (name || 'acuse') + '.pdf';
+    fetchDownload(`/api/oficios/${id}/acuse/${adjId}`, fn);
+}
+
 // ── Firmantes ────────────────────────────────────────
 async function loadFirmantes() {
     try {
         const firmantes = await api('GET', '/firmantes');
         state.firmantes = firmantes;
+        const ambitoLabel = { deaj: 'DEAJ', cvic: 'CVIC', ambos: 'DEAJ + CVIC' };
         document.getElementById('firmantes-tbody').innerHTML = firmantes.map(f => `
       <tr>
         <td>${f.nombre}</td>
         <td>${f.cargo}</td>
+        <td><span class="status-badge status-borrador">${ambitoLabel[f.ambito] || 'DEAJ'}</span></td>
         <td>${f.es_titular ? '<span class="titular-badge">Titular</span>' : '—'}</td>
         <td><span class="status-badge ${f.activo ? 'status-recibido' : 'status-archivado'}">${f.activo ? 'Activo' : 'Inactivo'}</span></td>
         <td>
@@ -986,6 +1057,14 @@ function openFirmanteModal(id = null) {
       <label>Cargo *</label>
       <input type="text" id="fm-cargo" value="${f?.cargo || ''}" placeholder="Cargo o puesto" />
     </div>
+    <div class="form-group" style="margin-bottom:16px">
+      <label>Ámbito — ¿en qué instrumentos puede firmar?</label>
+      <select id="fm-ambito">
+        <option value="deaj"  ${(!f || f.ambito === 'deaj') ? 'selected' : ''}>DEAJ (oficios, opiniones, dictámenes, certificaciones)</option>
+        <option value="cvic"  ${f?.ambito === 'cvic' ? 'selected' : ''}>CVIC (Comisión de Verificación de Integridad en Candidaturas)</option>
+        <option value="ambos" ${f?.ambito === 'ambos' ? 'selected' : ''}>Ambos</option>
+      </select>
+    </div>
     <div class="form-group" style="margin-bottom:10px">
       <label style="flex-direction:row;align-items:center;gap:8px;text-transform:none;letter-spacing:0;font-size:13px;font-weight:500">
         <input type="checkbox" id="fm-titular" ${f?.es_titular ? 'checked' : ''} />
@@ -1011,13 +1090,14 @@ async function saveFirmante(id) {
     const nombre = document.getElementById('fm-nombre').value.trim();
     const cargo = document.getElementById('fm-cargo').value.trim();
     const es_titular = document.getElementById('fm-titular').checked;
+    const ambito = document.getElementById('fm-ambito').value;
     const activoEl = document.getElementById('fm-activo');
     if (!nombre || !cargo) { toast('Nombre y cargo son requeridos', 'error'); return; }
     try {
         if (id) {
-            await api('PUT', `/firmantes/${id}`, { nombre, cargo, es_titular, activo: activoEl ? activoEl.checked : undefined });
+            await api('PUT', `/firmantes/${id}`, { nombre, cargo, es_titular, ambito, activo: activoEl ? activoEl.checked : undefined });
         } else {
-            await api('POST', '/firmantes', { nombre, cargo, es_titular });
+            await api('POST', '/firmantes', { nombre, cargo, es_titular, ambito });
         }
         toast('Firmante guardado', 'success');
         closeModal('modal-generic');
@@ -1054,6 +1134,7 @@ async function loadAnios() {
         ${corrCell(a.correlativo_opinion_inicio ?? 1, a.correlativo_opinion_actual ?? 0, `OTJ/`)}
         ${corrCell(a.correlativo_dictamen_inicio ?? 1, a.correlativo_dictamen_actual ?? 0, `DTJ/`)}
         ${corrCell(a.correlativo_certificacion_inicio ?? 1, a.correlativo_certificacion_actual ?? 0, `DEAJ-`)}
+        ${corrCell(a.correlativo_cvic_inicio ?? 1, a.correlativo_cvic_actual ?? 0, `INE/CVIC/`)}
         <td><span class="status-badge ${a.activo ? 'status-recibido' : 'status-archivado'}">${a.activo ? 'Activo' : 'Inactivo'}</span></td>
         <td>
           <div class="table-actions">
@@ -1095,6 +1176,10 @@ function openAnioModal(id = null) {
         <label>Certificaciones</label>
         <input type="number" id="an-correlativo-certificacion" value="${a?.correlativo_certificacion_inicio ?? 1}" min="1" />
       </div>
+      <div class="form-group">
+        <label>Oficios CVIC</label>
+        <input type="number" id="an-correlativo-cvic" value="${a?.correlativo_cvic_inicio ?? 1}" min="1" />
+      </div>
     </div>
   `;
     document.getElementById('modal-footer').innerHTML = `
@@ -1109,8 +1194,9 @@ async function saveAnio(id) {
     const correlativo_opinion_inicio      = parseInt(document.getElementById('an-correlativo-opinion').value) || 1;
     const correlativo_dictamen_inicio     = parseInt(document.getElementById('an-correlativo-dictamen').value) || 1;
     const correlativo_certificacion_inicio = parseInt(document.getElementById('an-correlativo-certificacion').value) || 1;
+    const correlativo_cvic_inicio          = parseInt(document.getElementById('an-correlativo-cvic').value) || 1;
     if (!correlativo_inicio) { toast('Correlativo de oficios requerido', 'error'); return; }
-    const body = { correlativo_inicio, correlativo_opinion_inicio, correlativo_dictamen_inicio, correlativo_certificacion_inicio };
+    const body = { correlativo_inicio, correlativo_opinion_inicio, correlativo_dictamen_inicio, correlativo_certificacion_inicio, correlativo_cvic_inicio };
     try {
         if (id) {
             await api('PUT', `/anios/${id}`, body);
@@ -1335,6 +1421,9 @@ document.getElementById('nuevo-oficio-form').addEventListener('submit', async e 
                 : { destinatario: document.getElementById('of-destinatario').value,
                     cargo_destinatario: document.getElementById('of-cargo').value }),
         };
+        if (!body.area) {
+            throw new Error('Tu usuario no tiene un área asignada. Pide a un administrador que te la asigne en el módulo de Usuarios para poder generar documentos.');
+        }
         const oficio = await api('POST', '/oficios/generar', body);
         document.getElementById('numero-generado').textContent = oficio.numero_oficio;
         document.getElementById('btn-generar-word').dataset.id = oficio.id;
@@ -1374,15 +1463,25 @@ function applyTipoToggle(tipo) {
     document.getElementById('cargo-group').style.display = needsUR ? 'none' : '';
     document.getElementById('url-solicitante-group').style.display = needsUR ? '' : 'none';
     document.getElementById('of-destinatario').required = !needsUR;
-    document.getElementById('of-cargo').required = !needsUR;
+    // El cargo del destinatario es obligatorio salvo en CVIC (el destinatario va como bloque único).
+    const cargoReq = !needsUR && tipo !== 'cvic';
+    document.getElementById('of-cargo').required = cargoReq;
+    const cargoAst = document.querySelector('#cargo-group .required');
+    if (cargoAst) cargoAst.style.display = cargoReq ? '' : 'none';
     document.getElementById('of-url-solicitante').required = needsUR;
+    // CVIC: firma el Presidente de la Comisión → no aplica la justificación de "no titular".
+    if (tipo === 'cvic') {
+        document.getElementById('justificacion-group').style.display = 'none';
+        const jt = document.getElementById('of-justificacion');
+        jt.required = false; jt.value = '';
+    }
 }
 // Justificación condicional
 document.getElementById('of-firmante').addEventListener('change', function () {
     const firmante = state.firmantes.find(f => f.id == this.value);
     const group = document.getElementById('justificacion-group');
     const textarea = document.getElementById('of-justificacion');
-    if (firmante && !firmante.es_titular) {
+    if (currentTipo !== 'cvic' && firmante && !firmante.es_titular) {
         group.style.display = '';
         textarea.required = true;
     } else {

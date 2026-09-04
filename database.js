@@ -73,6 +73,11 @@ try { db.exec(`ALTER TABLE anios_config ADD COLUMN correlativo_certificacion_act
 try { db.exec(`ALTER TABLE anios_config ADD COLUMN correlativo_opinion_inicio INTEGER NOT NULL DEFAULT 1`); } catch (_) {}
 try { db.exec(`ALTER TABLE anios_config ADD COLUMN correlativo_dictamen_inicio INTEGER NOT NULL DEFAULT 1`); } catch (_) {}
 try { db.exec(`ALTER TABLE anios_config ADD COLUMN correlativo_certificacion_inicio INTEGER NOT NULL DEFAULT 1`); } catch (_) {}
+// CVIC — Comisión de Verificación de Integridad en Candidaturas (INE/CVIC/###/año)
+try { db.exec(`ALTER TABLE anios_config ADD COLUMN correlativo_cvic_actual INTEGER NOT NULL DEFAULT 0`); } catch (_) {}
+try { db.exec(`ALTER TABLE anios_config ADD COLUMN correlativo_cvic_inicio INTEGER NOT NULL DEFAULT 1`); } catch (_) {}
+// Ámbito del firmante: 'deaj' (instrumentos DEAJ), 'cvic' (Comisión) o 'ambos'.
+try { db.exec(`ALTER TABLE firmantes ADD COLUMN ambito TEXT NOT NULL DEFAULT 'deaj'`); } catch (_) {}
 try { db.exec(`ALTER TABLE oficios ADD COLUMN url_solicitante TEXT`); } catch (_) {}
 try { db.exec(`ALTER TABLE oficios ADD COLUMN razon_reactivacion TEXT`); } catch (_) {}
 try { db.exec(`ALTER TABLE oficios ADD COLUMN cuerpo TEXT`); } catch (_) {}
@@ -87,6 +92,28 @@ try { db.exec(`ALTER TABLE oficios ADD COLUMN elaboro_nombre TEXT`); } catch (_)
 try { db.exec(`ALTER TABLE oficios ADD COLUMN elaboro_puesto TEXT`); } catch (_) {}
 try { db.exec(`ALTER TABLE oficios ADD COLUMN ambito TEXT DEFAULT 'interno'`); } catch (_) {}
 try { db.exec(`ALTER TABLE oficios ADD COLUMN incluir_vre INTEGER DEFAULT 1`); } catch (_) {}
+
+// Adjuntos del oficio (acuses / documentos): hasta 3 por oficio.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS oficio_adjuntos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    oficio_id INTEGER NOT NULL,
+    path TEXT NOT NULL,
+    original_name TEXT,
+    size INTEGER,
+    creado_en DATETIME DEFAULT (datetime('now','localtime')),
+    FOREIGN KEY (oficio_id) REFERENCES oficios(id) ON DELETE CASCADE
+  )
+`);
+// Backfill: mover el acuse de un solo archivo (acuse_path) a la tabla de adjuntos.
+try {
+  const conAcuse = db.prepare(`SELECT id, acuse_path FROM oficios WHERE acuse_path IS NOT NULL AND acuse_path != ''`).all();
+  const yaTiene = db.prepare(`SELECT COUNT(*) c FROM oficio_adjuntos WHERE oficio_id = ?`);
+  const ins = db.prepare(`INSERT INTO oficio_adjuntos (oficio_id, path, original_name) VALUES (?, ?, ?)`);
+  for (const o of conAcuse) {
+    if (yaTiene.get(o.id).c === 0) ins.run(o.id, o.acuse_path, 'Acuse');
+  }
+} catch (_) {}
 
 // Seed: default admin
 if (!db.prepare(`SELECT id FROM usuarios WHERE rol = 'admin' LIMIT 1`).get()) {
@@ -104,6 +131,15 @@ if (!db.prepare(`SELECT id FROM firmantes WHERE es_titular = 1 LIMIT 1`).get()) 
 }
 db.prepare(`UPDATE firmantes SET nombre = 'Anahí Silva Tosca' WHERE nombre = 'Abahí Silva Tosca'`).run();
 db.prepare(`UPDATE firmantes SET cargo = 'Directora Ejecutiva de Asuntos Jurídicos' WHERE nombre = 'Anahí Silva Tosca' AND cargo != 'Directora Ejecutiva de Asuntos Jurídicos'`).run();
+
+// Seed: firmante del Presidente de la Comisión (para oficios CVIC)
+if (!db.prepare(`SELECT id FROM firmantes WHERE nombre = 'Mtro. Arturo Manuel Chávez López' LIMIT 1`).get()) {
+  db.prepare(`INSERT INTO firmantes (nombre, cargo, es_titular, ambito) VALUES (?, ?, 0, 'cvic')`)
+    .run('Mtro. Arturo Manuel Chávez López', 'Presidente de la Comisión de Verificación de Integridad en Candidaturas');
+}
+// Ajuste único de ámbito (los guards evitan re-ejecución y no pisan cambios del admin):
+db.prepare(`UPDATE firmantes SET ambito = 'cvic'  WHERE nombre = 'Mtro. Arturo Manuel Chávez López' AND ambito = 'deaj'`).run();
+db.prepare(`UPDATE firmantes SET ambito = 'ambos' WHERE nombre = 'Anahí Silva Tosca'                AND ambito = 'deaj'`).run();
 
 // Normalize: documents with an acuse file should be archived
 db.prepare(`UPDATE oficios SET estatus = 'archivado' WHERE acuse_path IS NOT NULL AND acuse_path != '' AND estatus != 'archivado'`).run();

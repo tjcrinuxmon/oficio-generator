@@ -19,19 +19,21 @@ router.get('/activo', (req, res) => {
 
 // POST /api/anios (admin)
 router.post('/', adminMiddleware, (req, res) => {
-  const { anio, correlativo_inicio, correlativo_opinion_inicio = 1, correlativo_dictamen_inicio = 1, correlativo_certificacion_inicio = 1 } = req.body;
+  const { anio, correlativo_inicio, correlativo_opinion_inicio = 1, correlativo_dictamen_inicio = 1, correlativo_certificacion_inicio = 1, correlativo_cvic_inicio = 1 } = req.body;
   if (!anio || !correlativo_inicio) return res.status(400).json({ error: 'Año y correlativo inicial de oficios son requeridos' });
   try {
     db.prepare(`INSERT INTO anios_config
       (anio, correlativo_inicio, correlativo_actual,
        correlativo_opinion_inicio, correlativo_opinion_actual,
        correlativo_dictamen_inicio, correlativo_dictamen_actual,
-       correlativo_certificacion_inicio, correlativo_certificacion_actual, activo)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`)
+       correlativo_certificacion_inicio, correlativo_certificacion_actual,
+       correlativo_cvic_inicio, correlativo_cvic_actual, activo)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`)
       .run(anio, correlativo_inicio, correlativo_inicio,
            correlativo_opinion_inicio, correlativo_opinion_inicio,
            correlativo_dictamen_inicio, correlativo_dictamen_inicio,
-           correlativo_certificacion_inicio, correlativo_certificacion_inicio);
+           correlativo_certificacion_inicio, correlativo_certificacion_inicio,
+           correlativo_cvic_inicio, correlativo_cvic_inicio);
     res.status(201).json(db.prepare(`SELECT * FROM anios_config WHERE anio = ?`).get(anio));
   } catch (e) {
     if (e.message.includes('UNIQUE')) return res.status(409).json({ error: 'Ese año ya existe' });
@@ -56,18 +58,21 @@ router.put('/:id', adminMiddleware, (req, res) => {
     correlativo_opinion_inicio,
     correlativo_dictamen_inicio,
     correlativo_certificacion_inicio,
+    correlativo_cvic_inicio,
   } = req.body;
   if (!correlativo_inicio) return res.status(400).json({ error: 'Correlativo inicial de oficios requerido' });
   const opI = correlativo_opinion_inicio ?? 1;
   const dtI = correlativo_dictamen_inicio ?? 1;
   const ctI = correlativo_certificacion_inicio ?? 1;
+  const cvI = correlativo_cvic_inicio ?? 1;
   db.prepare(`UPDATE anios_config SET
     correlativo_inicio = ?, correlativo_actual = ?,
     correlativo_opinion_inicio = ?, correlativo_opinion_actual = ?,
     correlativo_dictamen_inicio = ?, correlativo_dictamen_actual = ?,
-    correlativo_certificacion_inicio = ?, correlativo_certificacion_actual = ?
+    correlativo_certificacion_inicio = ?, correlativo_certificacion_actual = ?,
+    correlativo_cvic_inicio = ?, correlativo_cvic_actual = ?
     WHERE id = ?`)
-    .run(correlativo_inicio, correlativo_inicio, opI, opI, dtI, dtI, ctI, ctI, req.params.id);
+    .run(correlativo_inicio, correlativo_inicio, opI, opI, dtI, dtI, ctI, ctI, cvI, cvI, req.params.id);
   res.json({ ok: true });
 });
 

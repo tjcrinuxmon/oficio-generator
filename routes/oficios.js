@@ -80,7 +80,7 @@ async function construirExcelResultadoCarga(validos, numeros) {
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, path.join(__dirname, '../uploads')),
-  filename: (req, file, cb) => cb(null, `acuse_${req.params.id}_${Date.now()}.pdf`),
+  filename: (req, file, cb) => cb(null, `acuse_${req.params.id}_${Date.now()}_${Math.round(Math.random() * 1e6)}.pdf`),
 });
 const upload = multer({
   storage,
@@ -96,6 +96,7 @@ function buildOficioNumero(correlativo, anio, tipo) {
   if (tipo === 'opinion')       return `INE/DEAJ/OTJ/${num}/${anio}`;
   if (tipo === 'dictamen')      return `INE/DEAJ/DTJ/${num}/${anio}`;
   if (tipo === 'certificacion') return `DEAJ-${num}-${anio}`;
+  if (tipo === 'cvic')          return `INE/CVIC/${num}/${anio}`;
   return `INE/DEAJ/${num}/${anio}`;
 }
 
@@ -132,7 +133,7 @@ function buildWhere(query, userId, rol, userArea) {
 // GET /api/oficios
 router.get('/', (req, res) => {
   const { clause, params } = buildWhere(req.query, req.user.id, req.user.rol, req.user.area);
-  const sql = `SELECT o.*, f.nombre as firmante_nombre, f.cargo as firmante_cargo, f.es_titular, u.nombre as creado_por_nombre ${JOIN} WHERE ${clause} ORDER BY o.id DESC`;
+  const sql = `SELECT o.*, f.nombre as firmante_nombre, f.cargo as firmante_cargo, f.es_titular, u.nombre as creado_por_nombre, (SELECT COUNT(*) FROM oficio_adjuntos a WHERE a.oficio_id = o.id) AS adjuntos_count ${JOIN} WHERE ${clause} ORDER BY o.id DESC`;
   res.json(db.prepare(sql).all(...params));
 });
 
@@ -154,25 +155,29 @@ router.get('/:id', (req, res) => {
 // POST /api/oficios/generar — atomic
 router.post('/generar', (req, res) => {
   const { fecha, destinatario, cargo_destinatario, institucion, asunto, cuerpo, id_sai, justificacion_sai, sintesis, firmante_id, justificacion_firmante, razon, solicita, area, url_solicitante, reviso_nombre, reviso_puesto, elaboro_nombre, elaboro_puesto } = req.body;
-  const tipo            = ['oficio', 'opinion', 'dictamen', 'certificacion'].includes(req.body.tipo) ? req.body.tipo : 'oficio';
+  const tipo            = ['oficio', 'opinion', 'dictamen', 'certificacion', 'cvic'].includes(req.body.tipo) ? req.body.tipo : 'oficio';
   const ambito          = req.body.ambito === 'externo' ? 'externo' : 'interno';
   // Tabla Validó/Revisó/Elaboró: en interno siempre va; en externo es opcional.
   const incluirVre      = (ambito === 'externo' && (req.body.incluir_vre === false || req.body.incluir_vre === 0 || req.body.incluir_vre === '0' || req.body.incluir_vre === 'false')) ? 0 : 1;
   const isOpinion       = tipo === 'opinion';
   const isDictamen      = tipo === 'dictamen';
   const isCertificacion = tipo === 'certificacion';
+  const isCvic          = tipo === 'cvic';
 
   if (!fecha || !asunto || !firmante_id || !solicita || !area) return res.status(400).json({ error: 'Todos los campos obligatorios son requeridos' });
   if (id_sai && (!/^\d+$/.test(String(id_sai).trim()) || String(id_sai).trim().length > 10)) return res.status(400).json({ error: 'El ID SAI debe ser numérico y tener máximo 10 dígitos' });
   // ID SAI y justificación son mutuamente excluyentes; si no hay ninguno, el oficio queda "pendiente de SAI".
   const idSaiVal = id_sai ? String(id_sai).trim() : '';
   const justSaiVal = idSaiVal ? null : (justificacion_sai ? String(justificacion_sai).trim() || null : null);
-  if (!isOpinion && !isDictamen && (!destinatario || !cargo_destinatario)) return res.status(400).json({ error: 'Todos los campos obligatorios son requeridos' });
+  if (!isOpinion && !isDictamen && !destinatario) return res.status(400).json({ error: 'Todos los campos obligatorios son requeridos' });
+  // El cargo del destinatario es obligatorio salvo en CVIC (el destinatario va como bloque único).
+  if (!isOpinion && !isDictamen && !isCvic && !cargo_destinatario) return res.status(400).json({ error: 'Todos los campos obligatorios son requeridos' });
   if ((isOpinion || isDictamen) && !url_solicitante) return res.status(400).json({ error: 'Todos los campos obligatorios son requeridos' });
 
   const firmante = db.prepare(`SELECT es_titular FROM firmantes WHERE id = ? AND activo = 1`).get(parseInt(firmante_id));
   if (!firmante) return res.status(400).json({ error: 'Firmante no válido' });
-  const requiereJustificacion = !firmante.es_titular;
+  // CVIC lo firma el Presidente de la Comisión: no aplica la justificación de "no titular DEAJ".
+  const requiereJustificacion = isCvic ? false : !firmante.es_titular;
   if (requiereJustificacion && !justificacion_firmante) return res.status(400).json({ error: 'La justificación es obligatoria cuando no firma el titular' });
 
   if (!db.prepare(`SELECT id FROM anios_config WHERE activo = 1 LIMIT 1`).get()) {
@@ -181,7 +186,7 @@ router.post('/generar', (req, res) => {
 
   const generar = db.transaction(() => {
     // Leer el contador dentro de la transacción para evitar race conditions
-    const row = db.prepare(`SELECT id, anio, correlativo_actual, correlativo_opinion_actual, correlativo_dictamen_actual, correlativo_certificacion_actual FROM anios_config WHERE activo = 1 LIMIT 1`).get();
+    const row = db.prepare(`SELECT id, anio, correlativo_actual, correlativo_opinion_actual, correlativo_dictamen_actual, correlativo_certificacion_actual, correlativo_cvic_actual FROM anios_config WHERE activo = 1 LIMIT 1`).get();
 
     // MAX real de la tabla como respaldo por si el contador quedó desfasado
     const maxReal = db.prepare(
@@ -191,6 +196,7 @@ router.post('/generar', (req, res) => {
     const baseContador = isDictamen      ? (row.correlativo_dictamen_actual      || 0)
                        : isOpinion       ? (row.correlativo_opinion_actual        || 0)
                        : isCertificacion ? (row.correlativo_certificacion_actual  || 0)
+                       : isCvic          ? (row.correlativo_cvic_actual           || 0)
                        :                   row.correlativo_actual;
 
     const nuevoCorrelativo = Math.max(baseContador, maxReal) + 1;
@@ -200,6 +206,7 @@ router.post('/generar', (req, res) => {
     if (isDictamen)           db.prepare(`UPDATE anios_config SET correlativo_dictamen_actual      = ? WHERE id = ?`).run(nuevoCorrelativo, row.id);
     else if (isOpinion)       db.prepare(`UPDATE anios_config SET correlativo_opinion_actual        = ? WHERE id = ?`).run(nuevoCorrelativo, row.id);
     else if (isCertificacion) db.prepare(`UPDATE anios_config SET correlativo_certificacion_actual  = ? WHERE id = ?`).run(nuevoCorrelativo, row.id);
+    else if (isCvic)          db.prepare(`UPDATE anios_config SET correlativo_cvic_actual           = ? WHERE id = ?`).run(nuevoCorrelativo, row.id);
     else                      db.prepare(`UPDATE anios_config SET correlativo_actual                = ? WHERE id = ?`).run(nuevoCorrelativo, row.id);
 
     db.prepare(`INSERT INTO oficios (numero_oficio, correlativo, anio, tipo, fecha, destinatario, cargo_destinatario, institucion, asunto, cuerpo, id_sai, justificacion_sai, sintesis, firmante_id, requiere_justificacion, justificacion_firmante, razon, solicita, area, url_solicitante, reviso_nombre, reviso_puesto, elaboro_nombre, elaboro_puesto, creado_por, ambito, incluir_vre) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
@@ -253,7 +260,7 @@ router.post('/carga-masiva', uploadXlsx.single('archivo'), async (req, res) => {
 
   if (!rows.length) return res.status(400).json({ error: 'El archivo está vacío' });
 
-  const TIPOS_VALIDOS = ['oficio', 'opinion', 'dictamen', 'certificacion'];
+  const TIPOS_VALIDOS = ['oficio', 'opinion', 'dictamen', 'certificacion', 'cvic'];
   const firmantes = db.prepare('SELECT id, nombre, es_titular FROM firmantes WHERE activo = 1').all();
 
   const errores = [];
@@ -622,32 +629,75 @@ router.put('/:id', (req, res) => {
   res.json({ ok: true });
 });
 
-// POST /api/oficios/:id/acuse
-router.post('/:id/acuse', (req, res, next) => {
+const MAX_ADJUNTOS = 3;
+
+// Deja acuse_path apuntando al primer adjunto (indicador de "tiene acuse") o NULL.
+function sincronizarAcusePath(oficioId) {
+  const first = db.prepare(`SELECT path FROM oficio_adjuntos WHERE oficio_id = ? ORDER BY id LIMIT 1`).get(oficioId);
+  db.prepare(`UPDATE oficios SET acuse_path = ? WHERE id = ?`).run(first ? first.path : null, oficioId);
+  return !!first;
+}
+
+// GET /api/oficios/:id/acuses — lista de adjuntos
+router.get('/:id/acuses', (req, res) => {
+  const rows = db.prepare(`SELECT id, original_name, size, creado_en FROM oficio_adjuntos WHERE oficio_id = ? ORDER BY id`).all(req.params.id);
+  res.json(rows);
+});
+
+// POST /api/oficios/:id/acuse — agrega un adjunto (hasta 3, no reemplaza)
+router.post('/:id/acuse', (req, res) => {
   upload.single('acuse')(req, res, (err) => {
     if (err) return res.status(400).json({ error: err.message });
     if (!req.file) return res.status(400).json({ error: 'Archivo PDF requerido' });
 
-    const existing = db.prepare(`SELECT id, acuse_path FROM oficios WHERE id = ?`).get(req.params.id);
-    if (!existing) return res.status(404).json({ error: 'Oficio no encontrado' });
+    const existing = db.prepare(`SELECT id FROM oficios WHERE id = ?`).get(req.params.id);
+    if (!existing) { fs.unlink(req.file.path, () => {}); return res.status(404).json({ error: 'Oficio no encontrado' }); }
 
-    if (existing.acuse_path && fs.existsSync(existing.acuse_path)) fs.unlinkSync(existing.acuse_path);
-    db.prepare(`UPDATE oficios SET acuse_path = ?, estatus = 'archivado', actualizado_en = datetime('now','localtime') WHERE id = ?`)
-      .run(req.file.path, req.params.id);
-    res.json({ ok: true, acuse_path: req.file.path });
+    const count = db.prepare(`SELECT COUNT(*) c FROM oficio_adjuntos WHERE oficio_id = ?`).get(req.params.id).c;
+    if (count >= MAX_ADJUNTOS) { fs.unlink(req.file.path, () => {}); return res.status(400).json({ error: `Máximo ${MAX_ADJUNTOS} archivos por oficio` }); }
+
+    db.prepare(`INSERT INTO oficio_adjuntos (oficio_id, path, original_name, size) VALUES (?, ?, ?, ?)`)
+      .run(req.params.id, req.file.path, req.file.originalname, req.file.size);
+    sincronizarAcusePath(req.params.id);
+    db.prepare(`UPDATE oficios SET estatus = 'archivado', actualizado_en = datetime('now','localtime') WHERE id = ?`).run(req.params.id);
+    res.json({ ok: true });
   });
 });
 
-// DELETE /api/oficios/:id/acuse
+// GET /api/oficios/:id/acuse/:adjId — descarga un adjunto específico
+router.get('/:id/acuse/:adjId', (req, res) => {
+  const adj = db.prepare(`SELECT a.path, a.original_name, o.numero_oficio FROM oficio_adjuntos a JOIN oficios o ON o.id = a.oficio_id WHERE a.id = ? AND a.oficio_id = ?`).get(req.params.adjId, req.params.id);
+  if (!adj || !fs.existsSync(adj.path)) return res.status(404).json({ error: 'Archivo no disponible' });
+  let name = (adj.original_name || `Acuse_${adj.numero_oficio}`).replace(/[/\\]/g, '_');
+  if (!name.toLowerCase().endsWith('.pdf')) name += '.pdf';
+  res.setHeader('Content-Disposition', `attachment; filename="${name}"`);
+  res.setHeader('Content-Type', 'application/pdf');
+  fs.createReadStream(adj.path).pipe(res);
+});
+
+// DELETE /api/oficios/:id/acuse/:adjId — elimina un adjunto específico
+router.delete('/:id/acuse/:adjId', (req, res) => {
+  const adj = db.prepare(`SELECT path FROM oficio_adjuntos WHERE id = ? AND oficio_id = ?`).get(req.params.adjId, req.params.id);
+  if (!adj) return res.status(404).json({ error: 'Adjunto no encontrado' });
+  if (adj.path && fs.existsSync(adj.path)) { try { fs.unlinkSync(adj.path); } catch (_) {} }
+  db.prepare(`DELETE FROM oficio_adjuntos WHERE id = ?`).run(req.params.adjId);
+  const tieneAcuse = sincronizarAcusePath(req.params.id);
+  if (!tieneAcuse) db.prepare(`UPDATE oficios SET estatus = 'borrador', actualizado_en = datetime('now','localtime') WHERE id = ?`).run(req.params.id);
+  res.json({ ok: true });
+});
+
+// DELETE /api/oficios/:id/acuse — elimina TODOS los adjuntos (regresa a Borrador)
 router.delete('/:id/acuse', (req, res) => {
-  const row = db.prepare(`SELECT acuse_path FROM oficios WHERE id = ?`).get(req.params.id);
-  if (!row) return res.status(404).json({ error: 'Oficio no encontrado' });
-  if (row.acuse_path && fs.existsSync(row.acuse_path)) fs.unlinkSync(row.acuse_path);
+  const rows = db.prepare(`SELECT path FROM oficio_adjuntos WHERE oficio_id = ?`).all(req.params.id);
+  for (const r of rows) if (r.path && fs.existsSync(r.path)) { try { fs.unlinkSync(r.path); } catch (_) {} }
+  db.prepare(`DELETE FROM oficio_adjuntos WHERE oficio_id = ?`).run(req.params.id);
+  const legacy = db.prepare(`SELECT acuse_path FROM oficios WHERE id = ?`).get(req.params.id);
+  if (legacy?.acuse_path && fs.existsSync(legacy.acuse_path)) { try { fs.unlinkSync(legacy.acuse_path); } catch (_) {} }
   db.prepare(`UPDATE oficios SET acuse_path = NULL, estatus = 'borrador', actualizado_en = datetime('now','localtime') WHERE id = ?`).run(req.params.id);
   res.json({ ok: true });
 });
 
-// GET /api/oficios/:id/acuse
+// GET /api/oficios/:id/acuse — descarga el acuse principal (compatibilidad con Historial)
 router.get('/:id/acuse', (req, res) => {
   const row = db.prepare(`SELECT acuse_path, numero_oficio FROM oficios WHERE id = ?`).get(req.params.id);
   if (!row) return res.status(404).json({ error: 'Oficio no encontrado' });

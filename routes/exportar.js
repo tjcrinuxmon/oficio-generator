@@ -28,7 +28,7 @@ const router = express.Router();
 router.use(authMiddleware);
 
 const ESTATUS_LABEL = { borrador: 'Borrador', enviado: 'Enviado', recibido: 'Recibido', archivado: 'Archivado', cancelado: 'Cancelado' };
-const TIPO_LABEL    = { oficio: 'Oficio', opinion: 'Opinión Técnica', dictamen: 'Dictamen', certificacion: 'Certificación' };
+const TIPO_LABEL    = { oficio: 'Oficio', opinion: 'Opinión Técnica', dictamen: 'Dictamen', certificacion: 'Certificación', cvic: 'Oficio CVIC' };
 
 function getOficios(query, user) {
   const { estatus, tipo, area, firmante_id, fecha_inicio, fecha_fin, q } = query;
@@ -207,6 +207,129 @@ router.get('/docx/:id', async (req, res) => {
     const cuerpoParas = cuerpoText.trim()
       ? cuerpoText.split(/\r?\n/).map(line => p([{ text: line }], AlignmentType.BOTH))
       : [empty(160)];
+
+    // ══════════════════════════════════════════════════════════════════════
+    // CVIC — Comisión de Verificación de Integridad en Candidaturas
+    // Plantilla propia: encabezado de la Comisión, escudo de fondo, firma del
+    // Presidente centrada y C.c.e.p. específico.
+    // ══════════════════════════════════════════════════════════════════════
+    if (o.tipo === 'cvic') {
+      const escudoCvic = getEscudoBuffer();
+      const fechaCvic = `Ciudad de México, ${fd.getDate()} de ${MESES[fd.getMonth()].toLowerCase()} de ${fd.getFullYear()}.`;
+      const NOTA_CVIC = 'De conformidad con el Acuerdo del Consejo General del Instituto Nacional Electoral INE/CG482/2026.';
+
+      // Fuente Arial Narrow y espaciado posterior 0 pto en todo el documento CVIC.
+      const FC = 'Arial Narrow';
+      const rc = (text, op = {}) => new TextRun({
+        text, bold: op.bold, italics: op.italics,
+        underline: op.underline ? {} : undefined,
+        font: FC, size: op.size || PT12, color: op.color,
+      });
+      const pc = (children, alignment = AlignmentType.LEFT, line) =>
+        new Paragraph({ alignment, spacing: { after: 0, ...(line ? { line } : {}) }, children });
+      const emptyC = () => new Paragraph({ spacing: { after: 0 }, children: [] });
+
+      const cuerpoParasC = (o.cuerpo || '').trim()
+        ? o.cuerpo.split(/\r?\n/).map(l => pc([rc(l)], AlignmentType.BOTH))
+        : [emptyC()];
+
+      // Encabezado (se repite): escudo de fondo + nombre de la Comisión.
+      // El número de oficio y la fecha ya NO van aquí (van en el cuerpo).
+      const cvicHeaderChildren = [
+        ...(escudoCvic ? [new Paragraph({ children: [
+          new ImageRun({
+            data: escudoCvic,
+            transformation: { width: 816, height: 1056 },
+            type: 'png',
+            floating: {
+              horizontalPosition: { relative: HorizontalPositionRelativeFrom.PAGE, offset: 0 },
+              verticalPosition:   { relative: VerticalPositionRelativeFrom.PAGE,   offset: 0 },
+              behindDocument: true, allowOverlap: true,
+            },
+          }),
+        ]})] : []),
+        new Paragraph({ alignment: AlignmentType.RIGHT, spacing: { before: 500, after: 0, line: 264 }, children: [rc('COMISIÓN DE VERIFICACIÓN DE INTEGRIDAD EN CANDIDATURAS.', { bold: true, size: PT10 })] }),
+      ];
+
+      // C.c.e.p. en tabla de dos columnas, fuente 8.
+      const ccCell = (children, pct) => new TableCell({
+        width: { size: pct, type: WidthType.PERCENTAGE }, borders: CELL_NO_B,
+        margins: { top: 0, bottom: 0, left: 0, right: 60 }, verticalAlign: VerticalAlign.TOP, children,
+      });
+      const ccRow = (label, runs) => new TableRow({ children: [
+        ccCell([new Paragraph({ spacing: { after: 0 }, children: label ? [rc(label, { bold: true, size: PT8 })] : [] })], 11),
+        ccCell([new Paragraph({ spacing: { after: 0 }, children: runs })], 89),
+      ]});
+      const ccepTable = new Table({
+        width: { size: 100, type: WidthType.PERCENTAGE }, borders: NO_BORDERS,
+        rows: [
+          ccRow('C.c.e.p.', [rc('Lic. Guadalupe Taddei Zavala.', { bold: true, size: PT8 }), rc(' Consejera Presidenta del Consejo General del Instituto Nacional Electoral.- Presente.', { size: PT8 })]),
+          ccRow('', [rc('Consejerías Electorales del Consejo General del Instituto Nacional Electoral', { bold: true, size: PT8 }), rc('. – Presentes.', { size: PT8 })]),
+          ccRow('', [rc('Dra. Claudia Arlett Espino.', { bold: true, size: PT8 }), rc(' – Secretaria Ejecutiva del Instituto Nacional Electoral. - Presente.', { size: PT8 })]),
+          ccRow('', [rc('Mtra. Anahí Silva Tosca.', { bold: true, size: PT8 }), rc(' Directora Ejecutiva de Asuntos Jurídicos y Secretaría Técnica de la Comisión de Verificación de Integridad en Candidaturas. - Presente.', { size: PT8 })]),
+        ],
+      });
+
+      const cvicDoc = new Document({
+        footnotes: { 1: { children: [ new Paragraph({ spacing: { after: 0 }, children: [
+          new TextRun({ text: NOTA_CVIC, font: FC, size: PT8 }),
+        ]}) ] } },
+        sections: [{
+          properties: {
+            page: {
+              size: { width: convertInchesToTwip(8.5), height: convertInchesToTwip(11) },
+              margin: {
+                top: convertInchesToTwip(1.3), bottom: convertInchesToTwip(1),
+                left: 1134, right: 1134,
+                header: convertInchesToTwip(0.25), footer: convertInchesToTwip(0.4),
+              },
+            },
+          },
+          headers: { default: new Header({ children: cvicHeaderChildren }) },
+          footers: { default: new Footer({ children: [
+            new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 0 }, children: [
+              new TextRun({ children: [PageNumber.CURRENT, ' de ', PageNumber.TOTAL_PAGES], font: FC, size: PT9 }),
+            ]}),
+          ] }) },
+          children: [
+            // ── Número de oficio y fecha (fuera del encabezado, solo en la 1ª página) ──
+            pc([rc(`Oficio. ${o.numero_oficio}.`, { size: PT10, color: '6B5F78' })], AlignmentType.RIGHT, 264),
+            pc([rc(fechaCvic, { bold: true, size: PT10 })], AlignmentType.RIGHT, 264),
+
+            emptyC(), emptyC(),
+
+            // ── Destinatario ──
+            pc([rc(o.destinatario || '', { bold: true })], AlignmentType.LEFT, 276),
+            ...(o.cargo_destinatario ? [pc([rc(o.cargo_destinatario, { bold: true })], AlignmentType.LEFT, 276)] : []),
+
+            emptyC(),
+
+            // ── Cuerpo ──
+            ...cuerpoParasC,
+
+            emptyC(), emptyC(), emptyC(),
+
+            // ── Firma: Presidente de la Comisión (centrado) ──
+            pc([rc(o.firmante_cargo || 'Presidente de la Comisión de Verificación de Integridad en Candidaturas', { bold: true }), new FootnoteReferenceRun(1)], AlignmentType.CENTER),
+            emptyC(),
+            pc([rc(o.firmante_nombre || '', { bold: true })], AlignmentType.CENTER),
+            pc([rc('Firmado electrónicamente en términos de los artículos 10, 12 y 22 del Reglamento para el Uso y Operación de la Firma Electrónica Avanzada en el Instituto Nacional Electoral.', { size: PT8, italics: true })], AlignmentType.CENTER),
+
+            emptyC(),
+
+            // ── C.c.e.p. (tabla de 2 columnas, fuente 8) ──
+            ccepTable,
+          ],
+        }],
+      });
+
+      const bufferCvic = await Packer.toBuffer(cvicDoc);
+      const safeNameCvic = (o.numero_oficio || `oficio_${o.id}`).replace(/[/\s]/g, '_');
+      res.set('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+      res.set('Content-Disposition', `attachment; filename="${safeNameCvic}.docx"`);
+      res.set('Content-Length', bufferCvic.length);
+      return res.send(bufferCvic);
+    }
 
     const VRE_BORDER = { style: BorderStyle.SINGLE, size: 4, color: 'AAAAAA' };
     const VRE_CELL_B = { top: VRE_BORDER, bottom: VRE_BORDER, left: VRE_BORDER, right: VRE_BORDER };
