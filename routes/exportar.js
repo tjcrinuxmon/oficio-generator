@@ -358,7 +358,7 @@ router.get('/docx/:id', async (req, res) => {
           borders: CELL_NO_B,
           margins: { top: 300, bottom: 0, left: 0, right: 0 },
           children: [new Paragraph({ spacing: { after: 0 }, children: [
-            new ImageRun({ data: logoBuffer, transformation: { width: 186, height: 60 }, type: 'png' }),
+            new ImageRun({ data: logoBuffer, transformation: { width: 186, height: 68 }, type: 'png' }),
           ]})],
         }),
         new TableCell({
@@ -452,11 +452,11 @@ router.get('/docx/:id', async (req, res) => {
                 }),
                 new TableCell({
                   width: { size: 21, type: WidthType.PERCENTAGE },
-                  borders: { top: NO_B, bottom: NO_B, left: { style: BorderStyle.SINGLE, size: 12, color: 'E4007B' }, right: NO_B },
+                  borders: { top: NO_B, bottom: NO_B, left: { style: BorderStyle.SINGLE, size: 12, color: '674092' }, right: NO_B },
                   margins: { top: 20, bottom: 20, left: 120, right: 20 },
                   verticalAlign: VerticalAlign.TOP,
                   children: [
-                    new Paragraph({ spacing: { after: 0, line: 200 }, children: [new TextRun({ text: 'Oficina de partes:', font: 'Myriad Pro Cond', size: PT8, bold: true })] }),
+                    new Paragraph({ spacing: { after: 0, line: 200 }, children: [new TextRun({ text: 'Oficialía de partes:', font: 'Myriad Pro Cond', size: PT8, bold: true })] }),
                     new Paragraph({ spacing: { after: 0, line: 200 }, children: [new TextRun({ text: 'Viaducto Tlalpan 100,', font: 'Myriad Pro Cond', size: PT8 })] }),
                     new Paragraph({ spacing: { after: 0, line: 200 }, children: [new TextRun({ text: 'Edificio C, Planta Baja', font: 'Myriad Pro Cond', size: PT8 })] }),
                     new Paragraph({ spacing: { after: 0, line: 200 }, children: [new TextRun({ text: 'Colonia Arenal Tepepan,', font: 'Myriad Pro Cond', size: PT8 })] }),
@@ -477,7 +477,7 @@ router.get('/docx/:id', async (req, res) => {
           new Paragraph({
             alignment: AlignmentType.RIGHT,
             spacing: { after: 160 },
-            children: [run('Asunto: ', { bold: true }), run(o.asunto + '.')],
+            children: [run('Asunto: ', { bold: true }), run(o.asunto + '.', { bold: true })],
           }),
 
           empty(),
@@ -531,8 +531,8 @@ router.get('/docx/:id', async (req, res) => {
             spacing: { after: 160 },
             children: [
               new TextRun({ text: '\t', font: FONT, size: PT9 }),
-              new TextRun({ text: 'Claudia Arlett Espino,', font: FONT, size: PT9, bold: true }),
-              new TextRun({ text: ' Secretaria Ejecutiva del Instituto Nacional Electoral. Para su conocimiento.', font: FONT, size: PT9 }),
+              new TextRun({ text: 'Roberto Carlos Félix López.', font: FONT, size: PT9, bold: true }),
+              new TextRun({ text: ' Encargado de Despacho de la Secretaría Ejecutiva del Instituto Nacional Electoral. Para su conocimiento.', font: FONT, size: PT9 }),
             ],
           }),
 
