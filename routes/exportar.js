@@ -356,9 +356,9 @@ router.get('/docx/:id', async (req, res) => {
         new TableCell({
           width: { size: 32, type: WidthType.PERCENTAGE },
           borders: CELL_NO_B,
-          margins: { top: 300, bottom: 0, left: 0, right: 0 },
-          children: [new Paragraph({ spacing: { after: 0 }, children: [
-            new ImageRun({ data: logoBuffer, transformation: { width: 186, height: 68 }, type: 'png' }),
+          margins: { top: 0, bottom: 0, left: 0, right: 0 },
+          children: [new Paragraph({ spacing: { before: 0, after: 0 }, children: [
+            new ImageRun({ data: logoBuffer, transformation: { width: 200, height: 73 }, type: 'png' }),
           ]})],
         }),
         new TableCell({
