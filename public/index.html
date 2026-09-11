@@ -7,12 +7,8 @@
   <title>Módulo de Gestión Documental — INE/DEAJ</title>
   <base href="/oficios/">
   <meta name="description" content="SiCoDEAJ — Sistema de Control Documental de la Dirección Ejecutiva de Asuntos Jurídicos" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700;900&display=swap"
-    rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
-  <link rel="icon" type="image/png" href="https://ine.mx/wp-content/uploads/2023/01/logo-ine.png" />
+  <link rel="icon" type="image/svg+xml" href="logo-ine-reducido.svg" />
 </head>
 
 <body>
@@ -20,7 +16,7 @@
   <div id="auth-loading" style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#f0fdf4;">
     <div style="text-align:center;">
       <div style="width:40px;height:40px;border:3px solid #bbf7d0;border-top-color:#047857;border-radius:50%;animation:spin 0.8s linear infinite;margin:0 auto 16px;"></div>
-      <p style="color:#047857;font-family:Roboto,sans-serif;font-size:14px;font-weight:500;">Verificando acceso...</p>
+      <p style="color:#047857;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:500;">Verificando acceso...</p>
     </div>
   </div>
   <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
@@ -30,11 +26,10 @@
     <!-- Top Navigation -->
     <header id="topnav" class="topnav">
       <div class="topnav-brand">
-        <div class="logo-badge-sm">
-          <div class="diamond"></div>
-        </div>
+        <img src="logo-ine-reducido.svg" alt="Instituto Nacional Electoral"
+          style="height:26px;width:auto;display:block" />
         <div>
-          <div class="topnav-org">INE · DEAJ</div>
+          <div class="topnav-org">DEAJ</div>
           <div class="topnav-sys">Módulo de Gestión Documental</div>
         </div>
       </div>
