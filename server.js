@@ -20,6 +20,21 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
+// El HTML trae <base href="/oficios/"> (para correr bajo el portal, que sirve
+// esta SPA en esa ruta). Sin portal delante (standalone/local), alias para que
+// app.js/style.css/logo, pedidos como /oficios/*, se resuelvan igual.
+app.use('/oficios', express.static(path.join(__dirname, 'public')));
+
+// El frontend siempre llama a /api/of/* (pensado para correr detrás del gateway
+// del portal, que reescribe /api/of/* -> /api/*). Sin gateway delante (standalone/local),
+// hacemos aquí la misma reescritura para que la SPA funcione igual.
+app.use((req, res, next) => {
+  if (req.url === '/api/of' || req.url.startsWith('/api/of/')) {
+    req.url = '/api' + req.url.slice('/api/of'.length);
+  }
+  next();
+});
+
 app.use('/api/auth',      require('./routes/auth'));
 app.use('/api/usuarios',  require('./routes/usuarios'));
 app.use('/api/oficios',   require('./routes/oficios'));
