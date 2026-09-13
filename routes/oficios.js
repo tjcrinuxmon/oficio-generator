@@ -91,12 +91,12 @@ const upload = multer({
   limits: { fileSize: 20 * 1024 * 1024 },
 });
 
-function buildOficioNumero(correlativo, anio, tipo) {
+function buildOficioNumero(correlativo, anio, tipo, modalidadCvic) {
   const num = String(correlativo).padStart(3, '0');
   if (tipo === 'opinion')       return `INE/DEAJ/OTJ/${num}/${anio}`;
   if (tipo === 'dictamen')      return `INE/DEAJ/DTJ/${num}/${anio}`;
   if (tipo === 'certificacion') return `DEAJ-${num}-${anio}`;
-  if (tipo === 'cvic')          return `INE/CVIC/${num}/${anio}`;
+  if (tipo === 'cvic')          return modalidadCvic === 'secretaria_tecnica' ? `INE/CVIC/ST/${num}/${anio}` : `INE/CVIC/${num}/${anio}`;
   return `INE/DEAJ/${num}/${anio}`;
 }
 
@@ -163,6 +163,9 @@ router.post('/generar', (req, res) => {
   const isDictamen      = tipo === 'dictamen';
   const isCertificacion = tipo === 'certificacion';
   const isCvic          = tipo === 'cvic';
+  // Modalidad CVIC: 'presidencia' (INE/CVIC/###/año) o 'secretaria_tecnica' (INE/CVIC/ST/###/año).
+  const modalidadCvic   = isCvic ? (req.body.modalidad_cvic === 'secretaria_tecnica' ? 'secretaria_tecnica' : 'presidencia') : null;
+  const isCvicSt        = isCvic && modalidadCvic === 'secretaria_tecnica';
 
   if (!fecha || !asunto || !firmante_id || !solicita || !area) return res.status(400).json({ error: 'Todos los campos obligatorios son requeridos' });
   if (id_sai && (!/^\d+$/.test(String(id_sai).trim()) || String(id_sai).trim().length > 10)) return res.status(400).json({ error: 'El ID SAI debe ser numérico y tener máximo 10 dígitos' });
@@ -174,9 +177,13 @@ router.post('/generar', (req, res) => {
   if (!isOpinion && !isDictamen && !isCvic && !cargo_destinatario) return res.status(400).json({ error: 'Todos los campos obligatorios son requeridos' });
   if ((isOpinion || isDictamen) && !url_solicitante) return res.status(400).json({ error: 'Todos los campos obligatorios son requeridos' });
 
-  const firmante = db.prepare(`SELECT es_titular FROM firmantes WHERE id = ? AND activo = 1`).get(parseInt(firmante_id));
+  const firmante = db.prepare(`SELECT es_titular, cvic_rol FROM firmantes WHERE id = ? AND activo = 1`).get(parseInt(firmante_id));
   if (!firmante) return res.status(400).json({ error: 'Firmante no válido' });
-  // CVIC lo firma el Presidente de la Comisión: no aplica la justificación de "no titular DEAJ".
+  // El firmante debe corresponder a la modalidad CVIC elegida (Presidencia firma INE/CVIC/, Secretaría Técnica firma INE/CVIC/ST/).
+  if (isCvic && firmante.cvic_rol !== modalidadCvic) {
+    return res.status(400).json({ error: 'El firmante seleccionado no corresponde a la modalidad CVIC elegida' });
+  }
+  // CVIC lo firma el Presidente o la Secretaría Técnica de la Comisión: no aplica la justificación de "no titular DEAJ".
   const requiereJustificacion = isCvic ? false : !firmante.es_titular;
   if (requiereJustificacion && !justificacion_firmante) return res.status(400).json({ error: 'La justificación es obligatoria cuando no firma el titular' });
 
@@ -186,31 +193,38 @@ router.post('/generar', (req, res) => {
 
   const generar = db.transaction(() => {
     // Leer el contador dentro de la transacción para evitar race conditions
-    const row = db.prepare(`SELECT id, anio, correlativo_actual, correlativo_opinion_actual, correlativo_dictamen_actual, correlativo_certificacion_actual, correlativo_cvic_actual FROM anios_config WHERE activo = 1 LIMIT 1`).get();
+    const row = db.prepare(`SELECT id, anio, correlativo_actual, correlativo_opinion_actual, correlativo_dictamen_actual, correlativo_certificacion_actual, correlativo_cvic_actual, correlativo_cvic_st_actual FROM anios_config WHERE activo = 1 LIMIT 1`).get();
 
-    // MAX real de la tabla como respaldo por si el contador quedó desfasado
-    const maxReal = db.prepare(
-      `SELECT COALESCE(MAX(correlativo), 0) as max FROM oficios WHERE anio = ? AND tipo = ?`
-    ).get(row.anio, tipo).max;
+    // MAX real de la tabla como respaldo por si el contador quedó desfasado.
+    // CVIC tiene dos series independientes (Presidencia / Secretaría Técnica): se distingue por modalidad_cvic.
+    const maxReal = isCvic
+      ? db.prepare(
+          `SELECT COALESCE(MAX(correlativo), 0) as max FROM oficios WHERE anio = ? AND tipo = 'cvic' AND COALESCE(modalidad_cvic, 'presidencia') = ?`
+        ).get(row.anio, modalidadCvic).max
+      : db.prepare(
+          `SELECT COALESCE(MAX(correlativo), 0) as max FROM oficios WHERE anio = ? AND tipo = ?`
+        ).get(row.anio, tipo).max;
 
     const baseContador = isDictamen      ? (row.correlativo_dictamen_actual      || 0)
                        : isOpinion       ? (row.correlativo_opinion_actual        || 0)
                        : isCertificacion ? (row.correlativo_certificacion_actual  || 0)
+                       : isCvicSt        ? (row.correlativo_cvic_st_actual        || 0)
                        : isCvic          ? (row.correlativo_cvic_actual           || 0)
                        :                   row.correlativo_actual;
 
     const nuevoCorrelativo = Math.max(baseContador, maxReal) + 1;
 
-    const numeroOficio = buildOficioNumero(nuevoCorrelativo, row.anio, tipo);
+    const numeroOficio = buildOficioNumero(nuevoCorrelativo, row.anio, tipo, modalidadCvic);
 
     if (isDictamen)           db.prepare(`UPDATE anios_config SET correlativo_dictamen_actual      = ? WHERE id = ?`).run(nuevoCorrelativo, row.id);
     else if (isOpinion)       db.prepare(`UPDATE anios_config SET correlativo_opinion_actual        = ? WHERE id = ?`).run(nuevoCorrelativo, row.id);
     else if (isCertificacion) db.prepare(`UPDATE anios_config SET correlativo_certificacion_actual  = ? WHERE id = ?`).run(nuevoCorrelativo, row.id);
+    else if (isCvicSt)        db.prepare(`UPDATE anios_config SET correlativo_cvic_st_actual        = ? WHERE id = ?`).run(nuevoCorrelativo, row.id);
     else if (isCvic)          db.prepare(`UPDATE anios_config SET correlativo_cvic_actual           = ? WHERE id = ?`).run(nuevoCorrelativo, row.id);
     else                      db.prepare(`UPDATE anios_config SET correlativo_actual                = ? WHERE id = ?`).run(nuevoCorrelativo, row.id);
 
-    db.prepare(`INSERT INTO oficios (numero_oficio, correlativo, anio, tipo, fecha, destinatario, cargo_destinatario, institucion, asunto, cuerpo, id_sai, justificacion_sai, sintesis, firmante_id, requiere_justificacion, justificacion_firmante, razon, solicita, area, url_solicitante, reviso_nombre, reviso_puesto, elaboro_nombre, elaboro_puesto, creado_por, ambito, incluir_vre) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .run(numeroOficio, nuevoCorrelativo, row.anio, tipo, fecha,
+    db.prepare(`INSERT INTO oficios (numero_oficio, correlativo, anio, tipo, modalidad_cvic, fecha, destinatario, cargo_destinatario, institucion, asunto, cuerpo, id_sai, justificacion_sai, sintesis, firmante_id, requiere_justificacion, justificacion_firmante, razon, solicita, area, url_solicitante, reviso_nombre, reviso_puesto, elaboro_nombre, elaboro_puesto, creado_por, ambito, incluir_vre) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(numeroOficio, nuevoCorrelativo, row.anio, tipo, modalidadCvic, fecha,
            destinatario || '', cargo_destinatario || '', institucion || null,
            asunto, cuerpo || null, idSaiVal || null, justSaiVal, sintesis || null,
            parseInt(firmante_id), requiereJustificacion ? 1 : 0,
@@ -563,8 +577,17 @@ router.put('/:id', (req, res) => {
   const { estatus, fecha, destinatario, cargo_destinatario, institucion, asunto, cuerpo, id_sai, justificacion_sai, sintesis, firmante_id, justificacion_firmante, razon, solicita, area, url_solicitante, razon_reactivacion, reviso_nombre, reviso_puesto, elaboro_nombre, elaboro_puesto, ambito, incluir_vre } = req.body;
   const ownerClause = req.user.rol !== 'admin' ? 'AND creado_por = ?' : '';
   const checkParams = req.user.rol !== 'admin' ? [req.params.id, req.user.id] : [req.params.id];
-  if (!db.prepare(`SELECT id FROM oficios WHERE id = ? ${ownerClause}`).get(...checkParams)) {
+  const oficioActual = db.prepare(`SELECT id, tipo, modalidad_cvic FROM oficios WHERE id = ? ${ownerClause}`).get(...checkParams);
+  if (!oficioActual) {
     return res.status(404).json({ error: 'Oficio no encontrado' });
+  }
+  // Un oficio CVIC ya numerado no puede cambiar a un firmante de la otra modalidad (Presidencia ↔ Secretaría Técnica).
+  if (firmante_id && oficioActual.tipo === 'cvic') {
+    const nuevoFirmante = db.prepare(`SELECT cvic_rol FROM firmantes WHERE id = ?`).get(parseInt(firmante_id));
+    const modalidadActual = oficioActual.modalidad_cvic || 'presidencia';
+    if (!nuevoFirmante || nuevoFirmante.cvic_rol !== modalidadActual) {
+      return res.status(400).json({ error: 'El firmante seleccionado no corresponde a la modalidad CVIC de este oficio' });
+    }
   }
 
   if (estatus === 'archivado') {

@@ -76,8 +76,15 @@ try { db.exec(`ALTER TABLE anios_config ADD COLUMN correlativo_certificacion_ini
 // CVIC — Comisión de Verificación de Integridad en Candidaturas (INE/CVIC/###/año)
 try { db.exec(`ALTER TABLE anios_config ADD COLUMN correlativo_cvic_actual INTEGER NOT NULL DEFAULT 0`); } catch (_) {}
 try { db.exec(`ALTER TABLE anios_config ADD COLUMN correlativo_cvic_inicio INTEGER NOT NULL DEFAULT 1`); } catch (_) {}
+// CVIC-ST — misma Comisión, nomenclatura y correlativo propios para la Secretaría Técnica (INE/CVIC/ST/###/año)
+try { db.exec(`ALTER TABLE anios_config ADD COLUMN correlativo_cvic_st_actual INTEGER NOT NULL DEFAULT 0`); } catch (_) {}
+try { db.exec(`ALTER TABLE anios_config ADD COLUMN correlativo_cvic_st_inicio INTEGER NOT NULL DEFAULT 1`); } catch (_) {}
 // Ámbito del firmante: 'deaj' (instrumentos DEAJ), 'cvic' (Comisión) o 'ambos'.
 try { db.exec(`ALTER TABLE firmantes ADD COLUMN ambito TEXT NOT NULL DEFAULT 'deaj'`); } catch (_) {}
+// Rol dentro de la Comisión CVIC: 'presidencia' o 'secretaria_tecnica' (determina cuál nomenclatura puede firmar).
+try { db.exec(`ALTER TABLE firmantes ADD COLUMN cvic_rol TEXT`); } catch (_) {}
+// Modalidad del oficio CVIC generado: 'presidencia' (INE/CVIC/###/año) o 'secretaria_tecnica' (INE/CVIC/ST/###/año).
+try { db.exec(`ALTER TABLE oficios ADD COLUMN modalidad_cvic TEXT`); } catch (_) {}
 try { db.exec(`ALTER TABLE oficios ADD COLUMN url_solicitante TEXT`); } catch (_) {}
 try { db.exec(`ALTER TABLE oficios ADD COLUMN razon_reactivacion TEXT`); } catch (_) {}
 try { db.exec(`ALTER TABLE oficios ADD COLUMN cuerpo TEXT`); } catch (_) {}
@@ -140,6 +147,14 @@ if (!db.prepare(`SELECT id FROM firmantes WHERE nombre = 'Mtro. Arturo Manuel Ch
 // Ajuste único de ámbito (los guards evitan re-ejecución y no pisan cambios del admin):
 db.prepare(`UPDATE firmantes SET ambito = 'cvic'  WHERE nombre = 'Mtro. Arturo Manuel Chávez López' AND ambito = 'deaj'`).run();
 db.prepare(`UPDATE firmantes SET ambito = 'ambos' WHERE nombre = 'Anahí Silva Tosca'                AND ambito = 'deaj'`).run();
+
+// Rol CVIC: Presidencia = Arturo Manuel Chávez López; Secretaría Técnica = Anahí Silva Tosca.
+// Guard por cvic_rol vacío: no pisa un cambio posterior hecho desde el catálogo de firmantes.
+db.prepare(`UPDATE firmantes SET cvic_rol = 'presidencia'       WHERE nombre = 'Mtro. Arturo Manuel Chávez López' AND (cvic_rol IS NULL OR cvic_rol = '')`).run();
+db.prepare(`UPDATE firmantes SET cvic_rol = 'secretaria_tecnica' WHERE nombre = 'Anahí Silva Tosca'                AND (cvic_rol IS NULL OR cvic_rol = '')`).run();
+
+// Backfill: los oficios CVIC generados antes de dividir la nomenclatura fueron todos de Presidencia.
+db.prepare(`UPDATE oficios SET modalidad_cvic = 'presidencia' WHERE tipo = 'cvic' AND (modalidad_cvic IS NULL OR modalidad_cvic = '')`).run();
 
 // Normalize: documents with an acuse file should be archived
 db.prepare(`UPDATE oficios SET estatus = 'archivado' WHERE acuse_path IS NOT NULL AND acuse_path != '' AND estatus != 'archivado'`).run();

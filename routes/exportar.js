@@ -214,6 +214,7 @@ router.get('/docx/:id', async (req, res) => {
     // Presidente centrada y C.c.e.p. específico.
     // ══════════════════════════════════════════════════════════════════════
     if (o.tipo === 'cvic') {
+      const esST = o.modalidad_cvic === 'secretaria_tecnica';
       const escudoCvic = getEscudoBuffer();
       const fechaCvic = `Ciudad de México, ${fd.getDate()} de ${MESES[fd.getMonth()].toLowerCase()} de ${fd.getFullYear()}.`;
       const NOTA_CVIC = 'De conformidad con el Acuerdo del Consejo General del Instituto Nacional Electoral INE/CG482/2026.';
@@ -260,14 +261,19 @@ router.get('/docx/:id', async (req, res) => {
         ccCell([new Paragraph({ spacing: { after: 0 }, children: label ? [rc(label, { bold: true, size: PT8 })] : [] })], 11),
         ccCell([new Paragraph({ spacing: { after: 0 }, children: runs })], 89),
       ]});
+      // C.c.e.p.: Presidencia lleva copia a la Secretaría Técnica (Anahí Silva Tosca);
+      // cuando firma la propia Secretaría Técnica, esa copia se omite (no aplica copiarse a sí misma).
+      const ccepRows = [
+        ccRow('C.c.e.p.', [rc('Lic. Guadalupe Taddei Zavala.', { bold: true, size: PT8 }), rc(' Consejera Presidenta del Consejo General del Instituto Nacional Electoral.- Presente.', { size: PT8 })]),
+        ccRow('', [rc('Consejerías Electorales del Consejo General del Instituto Nacional Electoral', { bold: true, size: PT8 }), rc('. – Presentes.', { size: PT8 })]),
+        ccRow('', [rc('Dr. Roberto Carlos Félix López.', { bold: true, size: PT8 }), rc(' Encargado de Despacho de la Secretaría Ejecutiva del Instituto Nacional Electoral. - Presente.', { size: PT8 })]),
+      ];
+      if (!esST) {
+        ccepRows.push(ccRow('', [rc('Mtra. Anahí Silva Tosca.', { bold: true, size: PT8 }), rc(' Directora Ejecutiva de Asuntos Jurídicos y Secretaría Técnica de la Comisión de Verificación de Integridad en Candidaturas. - Presente.', { size: PT8 })]));
+      }
       const ccepTable = new Table({
         width: { size: 100, type: WidthType.PERCENTAGE }, borders: NO_BORDERS,
-        rows: [
-          ccRow('C.c.e.p.', [rc('Lic. Guadalupe Taddei Zavala.', { bold: true, size: PT8 }), rc(' Consejera Presidenta del Consejo General del Instituto Nacional Electoral.- Presente.', { size: PT8 })]),
-          ccRow('', [rc('Consejerías Electorales del Consejo General del Instituto Nacional Electoral', { bold: true, size: PT8 }), rc('. – Presentes.', { size: PT8 })]),
-          ccRow('', [rc('Dra. Claudia Arlett Espino.', { bold: true, size: PT8 }), rc(' – Secretaria Ejecutiva del Instituto Nacional Electoral. - Presente.', { size: PT8 })]),
-          ccRow('', [rc('Mtra. Anahí Silva Tosca.', { bold: true, size: PT8 }), rc(' Directora Ejecutiva de Asuntos Jurídicos y Secretaría Técnica de la Comisión de Verificación de Integridad en Candidaturas. - Presente.', { size: PT8 })]),
-        ],
+        rows: ccepRows,
       });
 
       const cvicDoc = new Document({
@@ -309,8 +315,10 @@ router.get('/docx/:id', async (req, res) => {
 
             emptyC(), emptyC(), emptyC(),
 
-            // ── Firma: Presidente de la Comisión (centrado) ──
-            pc([rc(o.firmante_cargo || 'Presidente de la Comisión de Verificación de Integridad en Candidaturas', { bold: true }), new FootnoteReferenceRun(1)], AlignmentType.CENTER),
+            // ── Firma: Presidencia o Secretaría Técnica de la Comisión (centrado) ──
+            // El cargo de firma CVIC es propio de la Comisión, no el cargo DEAJ del catálogo de firmantes
+            // (p. ej. Anahí Silva Tosca firma DEAJ como Directora Ejecutiva, pero CVIC-ST como Secretaría Técnica).
+            pc([rc(esST ? 'Secretaria Técnica de la Comisión de Verificación de Integridad en Candidaturas' : (o.firmante_cargo || 'Presidente de la Comisión de Verificación de Integridad en Candidaturas'), { bold: true }), new FootnoteReferenceRun(1)], AlignmentType.CENTER),
             emptyC(),
             pc([rc(o.firmante_nombre || '', { bold: true })], AlignmentType.CENTER),
             pc([rc('Firmado electrónicamente en términos de los artículos 10, 12 y 22 del Reglamento para el Uso y Operación de la Firma Electrónica Avanzada en el Instituto Nacional Electoral.', { size: PT8, italics: true })], AlignmentType.CENTER),

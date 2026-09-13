@@ -432,6 +432,9 @@ function selectTipo(tipo) {
     badge.className = `tipo-badge tipo-${tipo}`;
     badge.textContent = badges[tipo] || 'Oficio';
     document.querySelector('#btn-generar .btn-text').textContent = btnLabels[tipo] || '✉️ Generar Oficio';
+    const modalidadGroup = document.getElementById('modalidad-cvic-group');
+    modalidadGroup.style.display = tipo === 'cvic' ? '' : 'none';
+    if (tipo === 'cvic') document.getElementById('of-modalidad-cvic').value = 'presidencia';
     applyTipoToggle(tipo);
     // SAI por defecto: CVIC normalmente no va por SAI → "No aplica" con justificación precargada.
     const saiModo = document.getElementById('of-sai-modo');
@@ -448,18 +451,26 @@ function selectTipo(tipo) {
     showView('nuevo');
 }
 
+// Firmantes de "Nuevo Oficio": recarga el select según tipo (y, en CVIC, la modalidad elegida).
+async function loadFirmantesNuevo() {
+    const modalidadQS = currentTipo === 'cvic' ? `&modalidad=${document.getElementById('of-modalidad-cvic').value}` : '';
+    const firmantes = await api('GET', `/firmantes?tipo=${currentTipo}${modalidadQS}`);
+    state.firmantes = firmantes;
+    const sel = document.getElementById('of-firmante');
+    sel.innerHTML = '<option value="">— Seleccionar firmante —</option>' +
+        firmantes.map(f =>
+            `<option value="${f.id}">${f.nombre}${f.es_titular ? ' (Titular)' : ''}</option>`
+        ).join('');
+    return firmantes;
+}
+document.getElementById('of-modalidad-cvic').addEventListener('change', () => loadFirmantesNuevo().catch(e => toast(e.message, 'error')));
+
 // ── Nuevo Oficio ─────────────────────────────────────
 async function loadNuevo() {
     document.getElementById('numero-preview').classList.add('hidden');
     document.getElementById('numero-generado').textContent = '';
     try {
-        const firmantes = await api('GET', `/firmantes?tipo=${currentTipo}`);
-        state.firmantes = firmantes;
-        const sel = document.getElementById('of-firmante');
-        sel.innerHTML = '<option value="">— Seleccionar firmante —</option>' +
-            firmantes.map(f =>
-                `<option value="${f.id}">${f.nombre}${f.es_titular ? ' (Titular)' : ''}</option>`
-            ).join('');
+        await loadFirmantesNuevo();
         // fecha por defecto — siempre hoy, no editable
         const todayVal = cdmxToday();
         document.getElementById('of-fecha').value = todayVal;
@@ -490,7 +501,8 @@ function applyDetVre() {
 async function openOficioModal(id, readOnly = false) {
     try {
         const o = await api('GET', `/oficios/${id}`);
-        const firmantes = await api('GET', `/firmantes?tipo=${o.tipo || 'oficio'}`);
+        const modalidadQS = o.tipo === 'cvic' ? `&modalidad=${o.modalidad_cvic || 'presidencia'}` : '';
+        const firmantes = await api('GET', `/firmantes?tipo=${o.tipo || 'oficio'}${modalidadQS}`);
         state.firmantes = firmantes;
         const currentFirmante = firmantes.find(f => f.id == o.firmante_id);
         // CVIC lo firma el Presidente de la Comisión: no aplica la justificación de "no titular DEAJ".
@@ -526,6 +538,7 @@ async function openOficioModal(id, readOnly = false) {
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
             <span class="detail-label">${isDictamen ? 'Número de Dictamen' : isCertificacion ? 'Número de Certificación' : isOpinion ? 'Número de Opinión Técnica' : isCvic ? 'Número de Oficio CVIC' : 'Número de Oficio'}</span>
             ${isDictamen ? '<span class="tipo-badge tipo-dictamen">Dictamen</span>' : isCertificacion ? '<span class="tipo-badge tipo-certificacion">Certificación</span>' : isOpinion ? '<span class="tipo-badge tipo-opinion">Opinión Técnica</span>' : isCvic ? '<span class="tipo-badge tipo-cvic">Oficio CVIC</span>' : '<span class="tipo-badge tipo-oficio">Oficio</span>'}
+            ${isCvic ? `<span class="tipo-badge tipo-cvic">${o.modalidad_cvic === 'secretaria_tecnica' ? 'Secretaría Técnica' : 'Presidencia'}</span>` : ''}
           </div>
           <span class="detail-numero">${o.numero_oficio}</span>
         </div>
@@ -1025,11 +1038,15 @@ async function loadFirmantes() {
         const firmantes = await api('GET', '/firmantes');
         state.firmantes = firmantes;
         const ambitoLabel = { deaj: 'DEAJ', cvic: 'CVIC', ambos: 'DEAJ + CVIC' };
+        const cvicRolLabel = { presidencia: 'CVIC: Presidencia', secretaria_tecnica: 'CVIC: Secretaría Técnica' };
         document.getElementById('firmantes-tbody').innerHTML = firmantes.map(f => `
       <tr>
         <td>${f.nombre}</td>
         <td>${f.cargo}</td>
-        <td><span class="status-badge status-borrador">${ambitoLabel[f.ambito] || 'DEAJ'}</span></td>
+        <td>
+          <span class="status-badge status-borrador">${ambitoLabel[f.ambito] || 'DEAJ'}</span>
+          ${f.cvic_rol ? `<span class="status-badge status-borrador" style="margin-left:4px">${cvicRolLabel[f.cvic_rol]}</span>` : ''}
+        </td>
         <td>${f.es_titular ? '<span class="titular-badge">Titular</span>' : '—'}</td>
         <td><span class="status-badge ${f.activo ? 'status-recibido' : 'status-archivado'}">${f.activo ? 'Activo' : 'Inactivo'}</span></td>
         <td>
@@ -1065,6 +1082,14 @@ function openFirmanteModal(id = null) {
         <option value="ambos" ${f?.ambito === 'ambos' ? 'selected' : ''}>Ambos</option>
       </select>
     </div>
+    <div class="form-group" style="margin-bottom:16px">
+      <label>Rol en CVIC — ¿cuál nomenclatura puede firmar?</label>
+      <select id="fm-cvic-rol">
+        <option value=""                    ${!f?.cvic_rol ? 'selected' : ''}>— No firma CVIC —</option>
+        <option value="presidencia"         ${f?.cvic_rol === 'presidencia' ? 'selected' : ''}>Presidencia — INE/CVIC/###/año</option>
+        <option value="secretaria_tecnica"  ${f?.cvic_rol === 'secretaria_tecnica' ? 'selected' : ''}>Secretaría Técnica — INE/CVIC/ST/###/año</option>
+      </select>
+    </div>
     <div class="form-group" style="margin-bottom:10px">
       <label style="flex-direction:row;align-items:center;gap:8px;text-transform:none;letter-spacing:0;font-size:13px;font-weight:500">
         <input type="checkbox" id="fm-titular" ${f?.es_titular ? 'checked' : ''} />
@@ -1091,13 +1116,14 @@ async function saveFirmante(id) {
     const cargo = document.getElementById('fm-cargo').value.trim();
     const es_titular = document.getElementById('fm-titular').checked;
     const ambito = document.getElementById('fm-ambito').value;
+    const cvic_rol = document.getElementById('fm-cvic-rol').value || null;
     const activoEl = document.getElementById('fm-activo');
     if (!nombre || !cargo) { toast('Nombre y cargo son requeridos', 'error'); return; }
     try {
         if (id) {
-            await api('PUT', `/firmantes/${id}`, { nombre, cargo, es_titular, ambito, activo: activoEl ? activoEl.checked : undefined });
+            await api('PUT', `/firmantes/${id}`, { nombre, cargo, es_titular, ambito, cvic_rol, activo: activoEl ? activoEl.checked : undefined });
         } else {
-            await api('POST', '/firmantes', { nombre, cargo, es_titular, ambito });
+            await api('POST', '/firmantes', { nombre, cargo, es_titular, ambito, cvic_rol });
         }
         toast('Firmante guardado', 'success');
         closeModal('modal-generic');
@@ -1135,6 +1161,7 @@ async function loadAnios() {
         ${corrCell(a.correlativo_dictamen_inicio ?? 1, a.correlativo_dictamen_actual ?? 0, `DTJ/`)}
         ${corrCell(a.correlativo_certificacion_inicio ?? 1, a.correlativo_certificacion_actual ?? 0, `DEAJ-`)}
         ${corrCell(a.correlativo_cvic_inicio ?? 1, a.correlativo_cvic_actual ?? 0, `INE/CVIC/`)}
+        ${corrCell(a.correlativo_cvic_st_inicio ?? 1, a.correlativo_cvic_st_actual ?? 0, `INE/CVIC/ST/`)}
         <td><span class="status-badge ${a.activo ? 'status-recibido' : 'status-archivado'}">${a.activo ? 'Activo' : 'Inactivo'}</span></td>
         <td>
           <div class="table-actions">
@@ -1177,8 +1204,12 @@ function openAnioModal(id = null) {
         <input type="number" id="an-correlativo-certificacion" value="${a?.correlativo_certificacion_inicio ?? 1}" min="1" />
       </div>
       <div class="form-group">
-        <label>Oficios CVIC</label>
+        <label>Oficios CVIC (Presidencia)</label>
         <input type="number" id="an-correlativo-cvic" value="${a?.correlativo_cvic_inicio ?? 1}" min="1" />
+      </div>
+      <div class="form-group">
+        <label>Oficios CVIC (Secretaría Técnica)</label>
+        <input type="number" id="an-correlativo-cvic-st" value="${a?.correlativo_cvic_st_inicio ?? 1}" min="1" />
       </div>
     </div>
   `;
@@ -1195,8 +1226,9 @@ async function saveAnio(id) {
     const correlativo_dictamen_inicio     = parseInt(document.getElementById('an-correlativo-dictamen').value) || 1;
     const correlativo_certificacion_inicio = parseInt(document.getElementById('an-correlativo-certificacion').value) || 1;
     const correlativo_cvic_inicio          = parseInt(document.getElementById('an-correlativo-cvic').value) || 1;
+    const correlativo_cvic_st_inicio       = parseInt(document.getElementById('an-correlativo-cvic-st').value) || 1;
     if (!correlativo_inicio) { toast('Correlativo de oficios requerido', 'error'); return; }
-    const body = { correlativo_inicio, correlativo_opinion_inicio, correlativo_dictamen_inicio, correlativo_certificacion_inicio, correlativo_cvic_inicio };
+    const body = { correlativo_inicio, correlativo_opinion_inicio, correlativo_dictamen_inicio, correlativo_certificacion_inicio, correlativo_cvic_inicio, correlativo_cvic_st_inicio };
     try {
         if (id) {
             await api('PUT', `/anios/${id}`, body);
@@ -1400,6 +1432,7 @@ document.getElementById('nuevo-oficio-form').addEventListener('submit', async e 
               : {}; // "despues" → queda pendiente de SAI
         const body = {
             tipo,
+            ...(tipo === 'cvic' ? { modalidad_cvic: document.getElementById('of-modalidad-cvic').value } : {}),
             ambito: document.getElementById('of-ambito').value,
             incluir_vre: document.getElementById('of-incluir-vre').checked,
             fecha: document.getElementById('of-fecha').value,

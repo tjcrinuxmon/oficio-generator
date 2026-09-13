@@ -304,7 +304,7 @@
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 15l2 2 4-4"/></svg>
             </div>
             <div class="selector-card-title">Oficio CVIC</div>
-            <div class="selector-card-nomenclatura">INE/CVIC/###/año</div>
+            <div class="selector-card-nomenclatura">INE/CVIC/###/año · INE/CVIC/ST/###/año</div>
             <div class="selector-card-desc">Oficio de la Comisión de Verificación de Integridad en Candidaturas del Instituto Nacional Electoral.</div>
             <button class="btn btn-primary selector-card-btn selector-btn-cvic" type="button">Generar Oficio CVIC</button>
           </div>
@@ -413,6 +413,13 @@
                 <label for="of-justificacion-sai" class="label-warning">Justificación: ¿por qué no aplica el ID SAI? <span class="required">*</span></label>
                 <textarea id="of-justificacion-sai" rows="2" maxlength="500" placeholder="Explica por qué este oficio no requiere ID SAI"></textarea>
               </div>
+            </div>
+            <div class="form-group col-2" id="modalidad-cvic-group" style="display:none">
+              <label for="of-modalidad-cvic">Nomenclatura CVIC <span class="required">*</span></label>
+              <select id="of-modalidad-cvic">
+                <option value="presidencia">Presidencia de la Comisión — INE/CVIC/###/año</option>
+                <option value="secretaria_tecnica">Secretaría Técnica — INE/CVIC/ST/###/año</option>
+              </select>
             </div>
             <div class="form-group col-2">
               <label for="of-firmante">Firmante <span class="required">*</span></label>
@@ -602,6 +609,7 @@
                 <th>Dictámenes</th>
                 <th>Certificaciones</th>
                 <th>CVIC</th>
+                <th>CVIC-ST</th>
                 <th>Estado</th>
                 <th>Acciones</th>
               </tr>
