@@ -958,6 +958,10 @@ async function renderAcuses(id, readOnly = false) {
     let items = [];
     try { items = await api('GET', `/oficios/${id}/acuses`); }
     catch (e) { cont.innerHTML = `<div class="acuse-file-hint">${e.message}</div>`; return; }
+    // Mantiene currentModalAcuse al día: si no se actualiza aquí, queda "congelado" con el
+    // valor que tenía al abrir el modal y bloquea "Guardar cambios" aunque ya se haya subido
+    // (o borrado) un adjunto en esta misma sesión del modal.
+    currentModalAcuse = items.length > 0 ? items[0].id : null;
     const pdfIcon = `<svg class="acuse-pdf-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>`;
     const rows = items.map((a, i) => {
         const nombre = (a.original_name || `Documento ${i + 1}`).replace(/"/g, '&quot;');
