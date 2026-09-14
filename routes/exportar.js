@@ -24,6 +24,12 @@ function getEscudoBuffer() {
   return fs.existsSync(ESCUDO_PATH) ? fs.readFileSync(ESCUDO_PATH) : null;
 }
 
+// Logo de la Comisión de Verificación de Integridad en Candidaturas (encabezado CVIC).
+const CVIC_LOGO_PATH = path.join(__dirname, '..', 'cvic-logo.jpg');
+function getCvicLogoBuffer() {
+  return fs.existsSync(CVIC_LOGO_PATH) ? fs.readFileSync(CVIC_LOGO_PATH) : null;
+}
+
 const router = express.Router();
 router.use(authMiddleware);
 
@@ -215,7 +221,7 @@ router.get('/docx/:id', async (req, res) => {
     // ══════════════════════════════════════════════════════════════════════
     if (o.tipo === 'cvic') {
       const esST = o.modalidad_cvic === 'secretaria_tecnica';
-      const escudoCvic = getEscudoBuffer();
+      const cvicLogo = getCvicLogoBuffer();
       const fechaCvic = `Ciudad de México, ${fd.getDate()} de ${MESES[fd.getMonth()].toLowerCase()} de ${fd.getFullYear()}.`;
       const NOTA_CVIC = 'De conformidad con el Acuerdo del Consejo General del Instituto Nacional Electoral INE/CG482/2026.';
 
@@ -234,22 +240,16 @@ router.get('/docx/:id', async (req, res) => {
         ? o.cuerpo.split(/\r?\n/).map(l => pc([rc(l)], AlignmentType.BOTH))
         : [emptyC()];
 
-      // Encabezado (se repite): escudo de fondo + nombre de la Comisión.
+      // Encabezado (se repite en cada página): logo oficial de la Comisión.
       // El número de oficio y la fecha ya NO van aquí (van en el cuerpo).
       const cvicHeaderChildren = [
-        ...(escudoCvic ? [new Paragraph({ children: [
-          new ImageRun({
-            data: escudoCvic,
-            transformation: { width: 816, height: 1056 },
-            type: 'png',
-            floating: {
-              horizontalPosition: { relative: HorizontalPositionRelativeFrom.PAGE, offset: 0 },
-              verticalPosition:   { relative: VerticalPositionRelativeFrom.PAGE,   offset: 0 },
-              behindDocument: true, allowOverlap: true,
-            },
-          }),
-        ]})] : []),
-        new Paragraph({ alignment: AlignmentType.RIGHT, spacing: { before: 500, after: 0, line: 264 }, children: [rc('COMISIÓN DE VERIFICACIÓN DE INTEGRIDAD EN CANDIDATURAS.', { bold: true, size: PT10 })] }),
+        new Paragraph({
+          alignment: AlignmentType.LEFT,
+          spacing: { before: 0, after: 200 },
+          children: cvicLogo
+            ? [new ImageRun({ data: cvicLogo, transformation: { width: 209, height: 100 }, type: 'jpg' })]
+            : [rc('COMISIÓN DE VERIFICACIÓN DE INTEGRIDAD EN CANDIDATURAS.', { bold: true, size: PT10 })],
+        }),
       ];
 
       // C.c.e.p. en tabla de dos columnas, fuente 8.
