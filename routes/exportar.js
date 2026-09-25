@@ -95,7 +95,7 @@ router.get('/excel', async (req, res) => {
 
   ws.mergeCells('A1:B1');
   const logoCell = ws.getCell('A1');
-  logoCell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF582E73' } };
+  logoCell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF454247' } };
   logoCell.alignment = { horizontal: 'center', vertical: 'middle' };
   ws.getColumn(1).width = 8;
   ws.getColumn(2).width = 8;
@@ -107,7 +107,7 @@ router.get('/excel', async (req, res) => {
   const titleCell = ws.getCell('C1');
   titleCell.value     = 'REGISTRO DE DOCUMENTOS — INE/DEAJ';
   titleCell.font      = { bold: true, size: 14, color: { argb: 'FFFFFFFF' } };
-  titleCell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF582E73' } };
+  titleCell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF454247' } };
   titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
 
   const headers = ['Número', 'Fecha', 'Tipo', 'Destinatario / UR Solicitante',
@@ -115,7 +115,7 @@ router.get('/excel', async (req, res) => {
   const hr = ws.addRow(headers);
   hr.eachCell(cell => {
     cell.font      = { bold: true, color: { argb: 'FFFFFFFF' } };
-    cell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2A1239' } };
+    cell.fill      = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF454247' } };
     cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
   });
   ws.getRow(2).height = 22;
@@ -460,7 +460,7 @@ router.get('/docx/:id', async (req, res) => {
                 }),
                 new TableCell({
                   width: { size: 21, type: WidthType.PERCENTAGE },
-                  borders: { top: NO_B, bottom: NO_B, left: { style: BorderStyle.SINGLE, size: 12, color: '674092' }, right: NO_B },
+                  borders: { top: NO_B, bottom: NO_B, left: { style: BorderStyle.SINGLE, size: 12, color: '454247' }, right: NO_B },
                   margins: { top: 20, bottom: 20, left: 120, right: 20 },
                   verticalAlign: VerticalAlign.TOP,
                   children: [

@@ -56,8 +56,8 @@ function buildPNG(w, h, getPixel) {
 }
 
 // ── Paleta INE ───────────────────────────────────────────────────────────────
-const PURPLE  = [88,  46,  115]; // #582E73
-const MAGENTA = [228,  0,  123]; // #E4007B
+const PURPLE  = [69,  66,  71]; // #454247 Gris Oxford
+const MAGENTA = [0,   0,   0]; // #000000 Negro
 const WHITE   = [255, 255, 255];
 
 // ── Bitmaps de caracteres 5×7 (escala 3x) ───────────────────────────────────
