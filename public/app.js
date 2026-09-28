@@ -27,7 +27,12 @@ const AREAS = [
     'Coordinación de Análisis de Información y Control Documental',
     'Líder de Enlace Interinstitucional',
     'Secretaría Particular',
+    'Comisión de Verificación de Integridad en Candidaturas',
 ];
+
+// Oficios CVIC: solo esta Comisión (por área) o un administrador pueden crearlos o verlos.
+const CVIC_AREA = 'Comisión de Verificación de Integridad en Candidaturas';
+const puedeCvic = () => state.user?.rol === 'admin' || state.user?.area === CVIC_AREA;
 
 const URS = [
     'Dirección Ejecutiva del Registro Federal de Electores (DERFE)',
@@ -1812,6 +1817,11 @@ async function initApp() {
     const isAdmin = state.user.rol === 'admin';
     document.querySelectorAll('.admin-only').forEach(el => {
         el.style.display = isAdmin ? '' : 'none';
+    });
+
+    // Oficios CVIC: solo la Comisión de Verificación de Integridad en Candidaturas o un administrador
+    document.querySelectorAll('.cvic-only').forEach(el => {
+        el.style.display = puedeCvic() ? '' : 'none';
     });
 
     // Info de usuario en topnav

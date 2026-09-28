@@ -106,6 +106,11 @@ const JOIN = `
   LEFT JOIN usuarios u ON o.creado_por = u.id
 `;
 
+// Oficios CVIC: solo la Comisión de Verificación de Integridad en Candidaturas
+// (usuarios con esta área asignada) o un administrador pueden crearlos o verlos.
+const CVIC_AREA = 'Comisión de Verificación de Integridad en Candidaturas';
+const puedeCvic = (user) => user.rol === 'admin' || user.area === CVIC_AREA;
+
 function buildWhere(query, userId, rol, userArea) {
   const { estatus, area, firmante_id, fecha_inicio, fecha_fin, q, tipo } = query;
   const where = ['1=1'];
@@ -115,6 +120,10 @@ function buildWhere(query, userId, rol, userArea) {
     where.push('o.area = ?'); params.push(userArea || '');
   } else if (rol !== 'admin') {
     where.push('o.creado_por = ?'); params.push(userId);
+  }
+  // Los oficios CVIC solo los ve la propia Comisión (por área) o un administrador.
+  if (!(rol === 'admin' || userArea === CVIC_AREA)) {
+    where.push(`(o.tipo IS NULL OR o.tipo <> 'cvic')`);
   }
   if (estatus)      { where.push('o.estatus = ?'); params.push(estatus); }
   if (area)         { where.push('o.area LIKE ?'); params.push(`%${area}%`); }
@@ -149,6 +158,7 @@ router.get('/:id', (req, res) => {
   }
   const row = db.prepare(`SELECT o.*, f.nombre as firmante_nombre, f.cargo as firmante_cargo, f.es_titular, u.nombre as creado_por_nombre ${JOIN} WHERE o.id = ? ${ownerClause}`).get(...params);
   if (!row) return res.status(404).json({ error: 'Oficio no encontrado' });
+  if (row.tipo === 'cvic' && !puedeCvic(req.user)) return res.status(404).json({ error: 'Oficio no encontrado' });
   res.json(row);
 });
 
@@ -163,6 +173,9 @@ router.post('/generar', (req, res) => {
   const isDictamen      = tipo === 'dictamen';
   const isCertificacion = tipo === 'certificacion';
   const isCvic          = tipo === 'cvic';
+  if (isCvic && !puedeCvic(req.user)) {
+    return res.status(403).json({ error: 'Solo la Comisión de Verificación de Integridad en Candidaturas o un administrador pueden generar oficios CVIC' });
+  }
   // Modalidad CVIC: 'presidencia' (INE/CVIC/###/año) o 'secretaria_tecnica' (INE/CVIC/ST/###/año).
   const modalidadCvic   = isCvic ? (req.body.modalidad_cvic === 'secretaria_tecnica' ? 'secretaria_tecnica' : 'presidencia') : null;
   const isCvicSt        = isCvic && modalidadCvic === 'secretaria_tecnica';
@@ -301,6 +314,7 @@ router.post('/carga-masiva', uploadXlsx.single('archivo'), async (req, res) => {
 
     const filaErrores = [];
     if (!TIPOS_VALIDOS.includes(tipo)) filaErrores.push(`tipo inválido ("${tipo}")`);
+    if (tipo === 'cvic' && !puedeCvic(req.user)) filaErrores.push('solo la Comisión de Verificación de Integridad en Candidaturas o un administrador pueden generar oficios CVIC');
     if (!asunto) filaErrores.push('asunto vacío');
     if (!solicita) filaErrores.push('solicita vacío');
     if (!area) filaErrores.push('área vacía');
@@ -579,6 +593,9 @@ router.put('/:id', (req, res) => {
   const checkParams = req.user.rol !== 'admin' ? [req.params.id, req.user.id] : [req.params.id];
   const oficioActual = db.prepare(`SELECT id, tipo, modalidad_cvic FROM oficios WHERE id = ? ${ownerClause}`).get(...checkParams);
   if (!oficioActual) {
+    return res.status(404).json({ error: 'Oficio no encontrado' });
+  }
+  if (oficioActual.tipo === 'cvic' && !puedeCvic(req.user)) {
     return res.status(404).json({ error: 'Oficio no encontrado' });
   }
   // Un oficio CVIC ya numerado no puede cambiar a un firmante de la otra modalidad (Presidencia ↔ Secretaría Técnica).

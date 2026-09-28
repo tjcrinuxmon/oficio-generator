@@ -174,8 +174,8 @@
             </div>
           </div>
 
-          <!-- Oficios CVIC -->
-          <div class="dash-tipo-panel">
+          <!-- Oficios CVIC (solo visible para la Comisión y administradores) -->
+          <div class="dash-tipo-panel cvic-only">
             <div class="dash-tipo-header dash-tipo-header-cvic">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 15l2 2 4-4"/></svg>
               <span class="dash-tipo-nombre">Oficios CVIC</span>
@@ -249,7 +249,7 @@
             <div class="section-title">Últimas certificaciones</div>
             <div id="dash-recientes-certificacion" class="recientes-list"></div>
           </div>
-          <div>
+          <div class="cvic-only">
             <div class="section-title">Últimos oficios CVIC</div>
             <div id="dash-recientes-cvic" class="recientes-list"></div>
           </div>
@@ -299,7 +299,7 @@
             <div class="selector-card-desc">Dictaminación / Certificación Jurídica de los asuntos que se someterán a la consideración de la Junta General Ejecutiva.</div>
             <button class="btn btn-primary selector-card-btn selector-btn-certificacion" type="button">Generar Certificación</button>
           </div>
-          <div class="selector-card selector-card-cvic" onclick="selectTipo('cvic')">
+          <div class="selector-card selector-card-cvic cvic-only" onclick="selectTipo('cvic')">
             <div class="selector-card-icon">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 15l2 2 4-4"/></svg>
             </div>
@@ -511,7 +511,7 @@
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="5.5" r="3.5"/><path d="M6 14v-1.5a2 2 0 0 1 4 0V14"/><polyline points="6.5 5.5 7.5 6.5 9.5 4.5"/></svg>
             Certificaciones
           </button>
-          <button class="tipo-tab" data-tipo="cvic">
+          <button class="tipo-tab cvic-only" data-tipo="cvic">
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V6z"/><polyline points="9 2 9 6 13 6"/><path d="M5.5 10 7 11.5 10 8.5"/></svg>
             CVIC
           </button>
