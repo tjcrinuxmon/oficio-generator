@@ -247,7 +247,7 @@ router.get('/docx/:id', async (req, res) => {
           alignment: AlignmentType.LEFT,
           spacing: { before: 0, after: 200 },
           children: cvicLogo
-            ? [new ImageRun({ data: cvicLogo, transformation: { width: 209, height: 100 }, type: 'jpg' })]
+            ? [new ImageRun({ data: cvicLogo, transformation: { width: 209, height: 118 }, type: 'jpg' })]
             : [rc('COMISIÓN DE VERIFICACIÓN DE INTEGRIDAD EN CANDIDATURAS.', { bold: true, size: PT10 })],
         }),
       ];
