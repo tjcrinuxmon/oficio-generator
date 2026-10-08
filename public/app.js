@@ -75,15 +75,25 @@ async function api(method, path, body = null, isFormData = false) {
     } else if (body) {
         opts.body = body; // FormData
     }
-    const res = await fetch(`/api/of${path}`, opts);
-    if (res.status === 401) { logout(); return null; }
-    if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error(err.error || 'Error desconocido');
+    Carga.inicio();
+    try {
+        let res;
+        try {
+            res = await fetch(`/api/of${path}`, opts);
+        } catch {
+            throw new Error('Sin conexión con el servidor. Revisa tu señal e intenta de nuevo.');
+        }
+        if (res.status === 401) { logout(); return null; }
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({ error: res.statusText }));
+            throw new Error(err.error || 'Error desconocido');
+        }
+        const ct = res.headers.get('Content-Type') || '';
+        if (ct.includes('application/json')) return await res.json();
+        return res; // para descargas
+    } finally {
+        Carga.fin();
     }
-    const ct = res.headers.get('Content-Type') || '';
-    if (ct.includes('application/json')) return res.json();
-    return res; // para descargas
 }
 
 // ── Toast ───────────────────────────────────────────
@@ -214,7 +224,14 @@ function renderRecientes(containerId, items, emptyMsg) {
 }
 
 // ── Dashboard ───────────────────────────────────────
+const DASH_STATS = ['of', 'ot', 'dt', 'ct', 'cv'].flatMap(p => [`${p}-total`, `${p}-borrador`, `${p}-archivado`]);
+const DASH_RECIENTES = ['oficio', 'opinion', 'dictamen', 'certificacion', 'cvic'].map(t => `dash-recientes-${t}`);
+
 async function loadDashboard() {
+    document.getElementById('dash-error').replaceChildren();
+    // Marcadores mientras llegan los datos (en celular la espera se nota más).
+    DASH_STATS.forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = Carga.dato(); });
+    DASH_RECIENTES.forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = Carga.lineas(3); });
     try {
         const [oficios, anioActivo] = await Promise.all([
             api('GET', '/oficios'),
@@ -274,7 +291,9 @@ async function loadDashboard() {
         renderRecientes('dash-recientes-certificacion', cts.slice(0, 5), 'No hay certificaciones registradas aún.');
         renderRecientes('dash-recientes-cvic', cvs.slice(0, 5), 'No hay oficios CVIC registrados aún.');
     } catch (e) {
-        toast(e.message, 'error');
+        DASH_STATS.forEach(id => { const el = document.getElementById(id); if (el) el.textContent = '—'; });
+        DASH_RECIENTES.forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = ''; });
+        Carga.error('dash-error', `No se pudieron cargar los datos: ${e.message}`, loadDashboard);
     }
 }
 
