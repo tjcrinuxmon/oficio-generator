@@ -109,7 +109,7 @@ function toast(msg, type = 'info') {
 // ── Utilidades ──────────────────────────────────────
 function formatFecha(f) {
     if (!f) return '—';
-    const d = new Date(f.includes('T') ? f : f + 'T12:00:00');
+    const d = new Date(f.includes('T') ? f : f.slice(0, 10) + 'T12:00:00');
     return d.toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit', year: '2-digit' });
 }
 
@@ -179,11 +179,12 @@ function showView(view) {
     document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
     document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
     document.getElementById(`view-${view}`)?.classList.add('active');
-    const navId = view === 'nuevo' ? 'nav-selector' : `nav-${view}`;
+    const navId = (view === 'nuevo' || view === 'nuevo-acuerdo') ? 'nav-selector' : `nav-${view}`;
     document.getElementById(navId)?.classList.add('active');
 
     if (view === 'dashboard') loadDashboard();
     if (view === 'nuevo') loadNuevo();
+    if (view === 'nuevo-acuerdo') loadNuevoAcuerdo();
     if (view === 'historial') loadHistorial(getHistorialFiltros());
     if (view === 'firmantes') loadFirmantes();
     if (view === 'anios') loadAnios();
@@ -224,8 +225,8 @@ function renderRecientes(containerId, items, emptyMsg) {
 }
 
 // ── Dashboard ───────────────────────────────────────
-const DASH_STATS = ['of', 'ot', 'dt', 'ct', 'cv'].flatMap(p => [`${p}-total`, `${p}-borrador`, `${p}-archivado`]);
-const DASH_RECIENTES = ['oficio', 'opinion', 'dictamen', 'certificacion', 'cvic'].map(t => `dash-recientes-${t}`);
+const DASH_STATS = ['of', 'ot', 'dt', 'ct', 'cv', 'ac'].flatMap(p => [`${p}-total`, `${p}-borrador`, `${p}-archivado`]);
+const DASH_RECIENTES = ['oficio', 'opinion', 'dictamen', 'certificacion', 'cvic', 'acuerdo'].map(t => `dash-recientes-${t}`);
 
 async function loadDashboard() {
     document.getElementById('dash-error').replaceChildren();
@@ -249,6 +250,7 @@ async function loadDashboard() {
         const dts  = oficios.filter(o => o.tipo === 'dictamen');
         const cts  = oficios.filter(o => o.tipo === 'certificacion');
         const cvs  = oficios.filter(o => o.tipo === 'cvic');
+        const acs  = oficios.filter(o => o.tipo === 'acuerdo');
 
         // Stats oficios
         document.getElementById('of-total').textContent = ofs.length;
@@ -275,6 +277,11 @@ async function loadDashboard() {
         document.getElementById('cv-borrador').textContent = cvs.filter(o => o.estatus === 'borrador').length;
         document.getElementById('cv-archivado').textContent = cvs.filter(o => o.estatus === 'archivado').length;
 
+        // Stats acuerdos CVIC (borrador = aún sin archivo; archivado = con archivo)
+        document.getElementById('ac-total').textContent = acs.length;
+        document.getElementById('ac-borrador').textContent = acs.filter(o => o.estatus === 'borrador').length;
+        document.getElementById('ac-archivado').textContent = acs.filter(o => o.estatus === 'archivado').length;
+
         // Aviso de pendientes de ID SAI (sobre todos los oficios visibles para el usuario)
         const pendientesSai = oficios.filter(o => saiEstado(o).key === 'pendiente').length;
         const saiAlert = document.getElementById('dash-sai-alert');
@@ -290,6 +297,7 @@ async function loadDashboard() {
         renderRecientes('dash-recientes-dictamen', dts.slice(0, 5), 'No hay dictámenes registrados aún.');
         renderRecientes('dash-recientes-certificacion', cts.slice(0, 5), 'No hay certificaciones registradas aún.');
         renderRecientes('dash-recientes-cvic', cvs.slice(0, 5), 'No hay oficios CVIC registrados aún.');
+        renderRecientes('dash-recientes-acuerdo', acs.slice(0, 5), 'No hay acuerdos CVIC registrados aún.');
     } catch (e) {
         DASH_STATS.forEach(id => { const el = document.getElementById(id); if (el) el.textContent = '—'; });
         DASH_RECIENTES.forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = ''; });
@@ -332,23 +340,25 @@ function renderHistorialTable(oficios) {
     const isDictamen      = tipo === 'dictamen';
     const isCertificacion = tipo === 'certificacion';
     const isCvic          = tipo === 'cvic';
+    const isAcuerdo       = tipo === 'acuerdo';
 
     const colHeader = isOficio        ? '<th>Destinatario</th>'
                     : isOpinion       ? '<th>Requirente</th>'
                     : isDictamen      ? '<th>Requirente</th>'
                     : isCertificacion ? '<th>Destinatario</th>'
                     : isCvic          ? '<th>Destinatario</th>'
+                    : isAcuerdo       ? '<th>Tipo de contenido</th>'
                     :                   '<th>Tipo</th>';
 
     thead.innerHTML = `
         <th>Número / Folio</th>
         <th>Fecha</th>
         ${colHeader}
-        <th>Asunto</th>
+        <th>${isAcuerdo ? 'Síntesis / título' : 'Asunto'}</th>
         <th>Firmante</th>
         <th>Área</th>
         <th>Estatus</th>
-        <th>Acuse</th>
+        <th>${isAcuerdo ? 'Archivos' : 'Acuse'}</th>
         <th>Acciones</th>`;
 
     // Paginación
@@ -365,12 +375,14 @@ function renderHistorialTable(oficios) {
             dictamen:      '<span class="tipo-badge tipo-dictamen">Dictamen</span>',
             certificacion: '<span class="tipo-badge tipo-certificacion">Certificación</span>',
             cvic:          '<span class="tipo-badge tipo-cvic">CVIC</span>',
+            acuerdo:       '<span class="tipo-badge tipo-cvic">Acuerdo CVIC</span>',
         };
         const colCell = isOficio        ? `<td class="td-truncate" title="${o.destinatario || ''}">${o.destinatario || '—'}</td>`
                       : isOpinion       ? `<td class="td-truncate" title="${o.url_solicitante || ''}">${o.url_solicitante || '—'}</td>`
                       : isDictamen      ? `<td class="td-truncate" title="${o.url_solicitante || ''}">${o.url_solicitante || '—'}</td>`
                       : isCertificacion ? `<td class="td-truncate" title="${o.destinatario || ''}">${o.destinatario || '—'}</td>`
                       : isCvic          ? `<td class="td-truncate" title="${o.destinatario || ''}">${o.destinatario || '—'}</td>`
+                      : isAcuerdo       ? '<td>Acuerdo</td>'
                       : `<td>${TIPO_BADGES[o.tipo] || TIPO_BADGES.oficio}</td>`;
         return `
     <tr>
@@ -378,12 +390,12 @@ function renderHistorialTable(oficios) {
       <td>${formatFecha(o.fecha)}</td>
       ${colCell}
       <td class="td-asunto" title="${o.asunto}">${o.asunto}</td>
-      <td class="td-truncate" title="${o.firmante_nombre || ''}">${o.firmante_nombre || '—'}</td>
+      <td class="td-truncate" title="${o.tipo === 'acuerdo' ? '' : (o.firmante_nombre || '')}">${o.tipo === 'acuerdo' ? '—' : (o.firmante_nombre || '—')}</td>
       <td class="td-truncate" title="${o.area}">${o.area}</td>
       <td><span class="status-badge status-${o.estatus}">${labelEstatus(o.estatus)}</span>${saiEstado(o).key === 'pendiente' ? `<br><span class="status-badge" style="background:#fee2e2;color:#b91c1c;margin-top:4px;display:inline-block" title="Falta capturar el ID SAI">⚠ Sin ID SAI</span>` : ''}</td>
       <td>
         ${o.acuse_path
-            ? (() => { const n = o.adjuntos_count || 1; return `<button class="btn-acuse-si" data-id="${o.id}" data-count="${n}" title="${n > 1 ? n + ' documentos — abrir para elegir cuál descargar' : 'Descargar acuse'}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>${n > 1 ? `<span class="acuse-count">${n}</span>` : ''}</button>`; })()
+            ? (() => { const n = o.adjuntos_count || 1; return `<button class="btn-acuse-si" data-id="${o.id}" data-count="${n}" data-tipo="${o.tipo || 'oficio'}" title="${n > 1 ? n + ' documentos — abrir para elegir cuál descargar' : 'Descargar acuse'}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/></svg>${n > 1 ? `<span class="acuse-count">${n}</span>` : ''}</button>`; })()
             : '<span class="acuse-no">—</span>'}
       </td>
       <td>
@@ -395,8 +407,8 @@ function renderHistorialTable(oficios) {
     tbody.querySelectorAll('.btn-acuse-si').forEach(el =>
         el.addEventListener('click', () => {
             const n = parseInt(el.dataset.count) || 1;
-            // Con varios documentos, abre el detalle para elegir cuál descargar; con uno, baja directo.
-            if (n > 1) openOficioModal(el.dataset.id, true);
+            // Con varios documentos (o en acuerdos, que pueden ser Word), abre el detalle para elegir; con uno, baja directo.
+            if (n > 1 || el.dataset.tipo === 'acuerdo') openOficioModal(el.dataset.id, true);
             else downloadAcuse(el.dataset.id);
         })
     );
@@ -447,6 +459,8 @@ function renderPagination(total) {
 
 // ── Selector de tipo ─────────────────────────────────
 function selectTipo(tipo) {
+    // El acuerdo CVIC tiene su propio formulario (se sube ya aprobado, no genera Word).
+    if (tipo === 'acuerdo') { showView('nuevo-acuerdo'); return; }
     currentTipo = tipo;
     const titles    = { oficio: 'Nuevo Oficio', opinion: 'Nueva Opinión Técnica', dictamen: 'Nuevo Dictamen', certificacion: 'Nueva Certificación', cvic: 'Nuevo Oficio CVIC' };
     const badges    = { oficio: 'Oficio', opinion: 'Opinión Técnica', dictamen: 'Dictamen', certificacion: 'Certificación', cvic: 'Oficio CVIC' };
@@ -525,6 +539,7 @@ function applyDetVre() {
 async function openOficioModal(id, readOnly = false) {
     try {
         const o = await api('GET', `/oficios/${id}`);
+        if (o.tipo === 'acuerdo') { openAcuerdoModal(o, readOnly); return; }
         const modalidadQS = o.tipo === 'cvic' ? `&modalidad=${o.modalidad_cvic || 'presidencia'}` : '';
         const firmantes = await api('GET', `/firmantes?tipo=${o.tipo || 'oficio'}${modalidadQS}`);
         state.firmantes = firmantes;
@@ -898,6 +913,125 @@ async function saveOficioChanges(id) {
     }
 }
 
+// ── Acuerdos CVIC ────────────────────────────────────
+// Se registran ya aprobados: sin destinatario, firmante, SAI ni Word. El autor es siempre la Comisión
+// y el estatus es automático (Borrador sin archivos, Archivado con al menos uno).
+const escHtml = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+function loadNuevoAcuerdo() {
+    document.getElementById('ac-numero-preview').classList.add('hidden');
+    document.getElementById('ac-error').classList.add('hidden');
+    if (!document.getElementById('ac-fecha').value) document.getElementById('ac-fecha').value = cdmxToday();
+}
+
+function openAcuerdoModal(o, readOnly) {
+    document.getElementById('modal-oficio-titulo').textContent = o.numero_oficio;
+    document.getElementById('modal-oficio-body').innerHTML = `
+      <div class="detail-grid">
+        <div class="detail-item full">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+            <span class="detail-label">Número de Acuerdo</span>
+            <span class="tipo-badge tipo-cvic">Acuerdo CVIC</span>
+          </div>
+          <span class="detail-numero">${escHtml(o.numero_oficio)}</span>
+        </div>
+        <div class="detail-separator"></div>
+
+        <div class="detail-item">
+          <span class="detail-label">Tipo de contenido</span>
+          <span class="detail-value">Acuerdo</span>
+        </div>
+        <div class="detail-item">
+          <span class="detail-label">Fecha</span>
+          ${readOnly
+            ? `<span class="detail-value">${formatFecha(o.fecha)}</span>`
+            : `<input type="date" id="det-ac-fecha" class="filter-select" style="width:100%" min="${o.anio}-01-01" max="${o.anio}-12-31" value="${o.fecha || ''}">`}
+        </div>
+        <div class="detail-item full">
+          <span class="detail-label">Síntesis o título</span>
+          ${readOnly
+            ? `<span class="detail-value" style="white-space:pre-wrap">${escHtml(o.asunto)}</span>`
+            : `<textarea id="det-ac-sintesis" class="filter-select" style="width:100%;min-height:72px;resize:vertical" maxlength="1000">${escHtml(o.asunto)}</textarea>`}
+        </div>
+        <div class="detail-item">
+          <span class="detail-label">Autor</span>
+          <span class="detail-value">${CVIC_AREA}</span>
+        </div>
+        <div class="detail-item">
+          <span class="detail-label">Estatus</span>
+          <span class="status-badge status-${o.estatus}" style="align-self:flex-start">${labelEstatus(o.estatus)}</span>
+        </div>
+        <div class="detail-item">
+          <span class="detail-label">Registrado por</span>
+          <span class="detail-value">${escHtml(o.creado_por_nombre || '—')}</span>
+        </div>
+        <div class="detail-item full acuse-section">
+          <div class="acuse-section-header">
+            <span class="detail-label">Archivos (hasta 10)</span>
+          </div>
+          <div id="acuse-list"><div class="acuse-file-hint" style="padding:6px 0">Cargando…</div></div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
+        <button class="btn btn-secondary" onclick="closeModal('modal-oficio')">Cerrar</button>
+        ${readOnly
+          ? `<button class="btn btn-primary" onclick="closeModal('modal-oficio');openOficioModal(${o.id},false)">Editar</button>`
+          : `<button class="btn btn-primary" onclick="saveAcuerdoChanges(${o.id})">Guardar cambios</button>`}
+      </div>
+    `;
+    openModal('modal-oficio');
+    renderAcuses(o.id, readOnly, true);
+}
+
+async function saveAcuerdoChanges(id) {
+    const fecha = document.getElementById('det-ac-fecha').value;
+    const asunto = document.getElementById('det-ac-sintesis').value.trim();
+    if (!fecha || !asunto) { toast('La fecha y la síntesis o título son obligatorias', 'error'); return; }
+    try {
+        await api('PUT', `/oficios/${id}`, { fecha, asunto });
+        toast('Acuerdo actualizado', 'success');
+        closeModal('modal-oficio');
+        if (state.view === 'historial') loadHistorial(getHistorialFiltros());
+        if (state.view === 'dashboard') loadDashboard();
+    } catch (e) {
+        toast(e.message, 'error');
+    }
+}
+
+document.getElementById('nuevo-acuerdo-form').addEventListener('reset', () => {
+    setTimeout(() => { document.getElementById('ac-fecha').value = cdmxToday(); });
+});
+
+document.getElementById('nuevo-acuerdo-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const btn = document.getElementById('btn-registrar-acuerdo');
+    const errEl = document.getElementById('ac-error');
+    errEl.classList.add('hidden');
+    btn.querySelector('.btn-text').classList.add('hidden');
+    btn.querySelector('.btn-spinner').classList.remove('hidden');
+    btn.disabled = true;
+    try {
+        const fd = new FormData();
+        fd.append('fecha', document.getElementById('ac-fecha').value);
+        fd.append('sintesis', document.getElementById('ac-sintesis').value.trim());
+        for (const f of document.getElementById('ac-archivos').files) fd.append('archivos', f);
+        const acuerdo = await api('POST', '/oficios/acuerdo', fd, true);
+        document.getElementById('ac-numero-generado').textContent = acuerdo.numero_oficio;
+        document.getElementById('ac-numero-preview').classList.remove('hidden');
+        toast(`Acuerdo ${acuerdo.numero_oficio} registrado`, 'success');
+        e.target.reset();
+        document.getElementById('ac-fecha').value = cdmxToday();
+    } catch (ex) {
+        errEl.textContent = ex.message;
+        errEl.classList.remove('hidden');
+    } finally {
+        btn.querySelector('.btn-text').classList.remove('hidden');
+        btn.querySelector('.btn-spinner').classList.add('hidden');
+        btn.disabled = false;
+    }
+});
+
 function onAcuseFileSelected(input, id) {
     const row = document.getElementById('acuse-selected-row');
     const nameEl = document.getElementById('acuse-selected-name');
@@ -976,7 +1110,9 @@ async function deleteAcuse(id) {
 }
 
 // ── Acuses / adjuntos (hasta 3) ──────────────────────
-async function renderAcuses(id, readOnly = false) {
+// Acuerdos CVIC: hasta 10 archivos PDF o Word; el resto de documentos, hasta 3 PDF.
+async function renderAcuses(id, readOnly = false, esAcuerdo = false) {
+    const max = esAcuerdo ? 10 : 3;
     const cont = document.getElementById('acuse-list');
     if (!cont) return;
     let items = [];
@@ -1000,47 +1136,47 @@ async function renderAcuses(id, readOnly = false) {
             </div>
           </div>
           <div class="acuse-attached-btns">
-            <button class="btn btn-secondary btn-sm" onclick="viewAcuseItem(${id},${a.id})">Ver</button>
+            ${/.pdf$/i.test(a.original_name || '.pdf') ? `<button class="btn btn-secondary btn-sm" onclick="viewAcuseItem(${id},${a.id})">Ver</button>` : ''}
             <button class="btn btn-secondary btn-sm" onclick="downloadAcuseItem(${id},${a.id},'${nombre.replace(/'/g, "\\'")}')">Descargar</button>
-            ${!readOnly ? `<button class="btn btn-danger btn-sm" onclick="deleteAcuseItem(${id},${a.id})">Eliminar</button>` : ''}
+            ${!readOnly ? `<button class="btn btn-danger btn-sm" onclick="deleteAcuseItem(${id},${a.id},${esAcuerdo})">Eliminar</button>` : ''}
           </div>
         </div>`;
     }).join('');
     let addArea = '';
-    if (!readOnly && items.length < 3) {
+    if (!readOnly && items.length < max) {
         addArea = `
         <div class="acuse-add-row">
-          <input type="file" id="det-acuse-file" accept=".pdf" />
-          <button class="btn btn-primary btn-sm" onclick="addAcuse(${id})">⬆ Agregar</button>
+          <input type="file" id="det-acuse-file" accept="${esAcuerdo ? '.pdf,.doc,.docx' : '.pdf'}" />
+          <button class="btn btn-primary btn-sm" onclick="addAcuse(${id}, ${esAcuerdo})">⬆ Agregar</button>
         </div>
-        <div class="acuse-dropzone-hint" style="margin-top:6px">PDF · hasta 3 archivos (oficio, medio de notificación, oficio firmado, etc.). ${items.length}/3 subidos.</div>`;
-    } else if (!readOnly && items.length >= 3) {
-        addArea = `<div class="acuse-dropzone-hint" style="margin-top:8px">Máximo de 3 archivos alcanzado. Elimina uno para agregar otro.</div>`;
+        <div class="acuse-dropzone-hint" style="margin-top:6px">${esAcuerdo ? 'PDF o Word · hasta 10 archivos (acuerdo firmado, anexos, etc.)' : 'PDF · hasta 3 archivos (oficio, medio de notificación, oficio firmado, etc.)'}. ${items.length}/${max} subidos.</div>`;
+    } else if (!readOnly && items.length >= max) {
+        addArea = `<div class="acuse-dropzone-hint" style="margin-top:8px">Máximo de ${max} archivos alcanzado. Elimina uno para agregar otro.</div>`;
     }
     cont.innerHTML = (items.length ? rows : '<div class="acuse-file-hint" style="padding:4px 0 8px">Sin documentos aún.</div>') + addArea;
 }
 
-async function addAcuse(id) {
+async function addAcuse(id, esAcuerdo = false) {
     const file = document.getElementById('det-acuse-file')?.files[0];
-    if (!file) { toast('Selecciona un archivo PDF', 'error'); return; }
+    if (!file) { toast(esAcuerdo ? 'Selecciona un archivo PDF o Word' : 'Selecciona un archivo PDF', 'error'); return; }
     const fd = new FormData(); fd.append('acuse', file);
     try {
         await api('POST', `/oficios/${id}/acuse`, fd, true);
         toast('Documento agregado', 'success');
         const sel = document.getElementById('det-estatus');
         if (sel) { sel.value = 'archivado'; document.getElementById('acuse-wrapper').style.display = ''; }
-        await renderAcuses(id);
+        await renderAcuses(id, false, esAcuerdo);
         if (state.view === 'historial') loadHistorial();
         if (state.view === 'dashboard') loadDashboard();
     } catch (e) { toast(e.message, 'error'); }
 }
 
-async function deleteAcuseItem(id, adjId) {
+async function deleteAcuseItem(id, adjId, esAcuerdo = false) {
     if (!confirm('¿Eliminar este documento? Si es el último, el oficio regresa a Borrador.')) return;
     try {
         await api('DELETE', `/oficios/${id}/acuse/${adjId}`);
         toast('Documento eliminado', 'success');
-        await renderAcuses(id);
+        await renderAcuses(id, false, esAcuerdo);
         if (state.view === 'historial') loadHistorial();
         if (state.view === 'dashboard') loadDashboard();
     } catch (e) { toast(e.message, 'error'); }
@@ -1056,7 +1192,7 @@ async function viewAcuseItem(id, adjId) {
 }
 
 function downloadAcuseItem(id, adjId, name) {
-    const fn = (name && name.toLowerCase().endsWith('.pdf')) ? name : (name || 'acuse') + '.pdf';
+    const fn = /.(pdf|docx?)$/i.test(name || '') ? name : (name || 'acuse') + '.pdf';
     fetchDownload(`/api/oficios/${id}/acuse/${adjId}`, fn);
 }
 
@@ -1190,6 +1326,7 @@ async function loadAnios() {
         ${corrCell(a.correlativo_certificacion_inicio ?? 1, a.correlativo_certificacion_actual ?? 0, `DEAJ-`)}
         ${corrCell(a.correlativo_cvic_inicio ?? 1, a.correlativo_cvic_actual ?? 0, `INE/CVIC/`)}
         ${corrCell(a.correlativo_cvic_st_inicio ?? 1, a.correlativo_cvic_st_actual ?? 0, `INE/CVIC/ST/`)}
+        <td style="text-align:center"><span style="font-size:11px;color:#9ca3af">${a.correlativo_acuerdo_inicio ?? 0} →</span> ${a.correlativo_acuerdo_actual ?? 0}${a.correlativo_acuerdo_actual > 0 ? ` <span style="font-family:monospace;font-size:11px;color:var(--ine-purple)">INE/CVIC/${a.correlativo_acuerdo_actual}</span>` : ''}</td>
         <td><span class="status-badge ${a.activo ? 'status-recibido' : 'status-archivado'}">${a.activo ? 'Activo' : 'Inactivo'}</span></td>
         <td>
           <div class="table-actions">
@@ -1239,6 +1376,10 @@ function openAnioModal(id = null) {
         <label>Oficios CVIC (Secretaría Técnica)</label>
         <input type="number" id="an-correlativo-cvic-st" value="${a?.correlativo_cvic_st_inicio ?? 1}" min="1" />
       </div>
+      <div class="form-group">
+        <label>Acuerdos CVIC — último número usado</label>
+        <input type="number" id="an-correlativo-acuerdo" value="${a?.correlativo_acuerdo_inicio ?? 0}" min="0" title="0 = el siguiente acuerdo será el 1" />
+      </div>
     </div>
   `;
     document.getElementById('modal-footer').innerHTML = `
@@ -1255,8 +1396,9 @@ async function saveAnio(id) {
     const correlativo_certificacion_inicio = parseInt(document.getElementById('an-correlativo-certificacion').value) || 1;
     const correlativo_cvic_inicio          = parseInt(document.getElementById('an-correlativo-cvic').value) || 1;
     const correlativo_cvic_st_inicio       = parseInt(document.getElementById('an-correlativo-cvic-st').value) || 1;
+    const correlativo_acuerdo_inicio       = parseInt(document.getElementById('an-correlativo-acuerdo').value) || 0;
     if (!correlativo_inicio) { toast('Correlativo de oficios requerido', 'error'); return; }
-    const body = { correlativo_inicio, correlativo_opinion_inicio, correlativo_dictamen_inicio, correlativo_certificacion_inicio, correlativo_cvic_inicio, correlativo_cvic_st_inicio };
+    const body = { correlativo_inicio, correlativo_opinion_inicio, correlativo_dictamen_inicio, correlativo_certificacion_inicio, correlativo_cvic_inicio, correlativo_cvic_st_inicio, correlativo_acuerdo_inicio };
     try {
         if (id) {
             await api('PUT', `/anios/${id}`, body);

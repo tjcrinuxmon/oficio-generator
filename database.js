@@ -79,6 +79,9 @@ try { db.exec(`ALTER TABLE anios_config ADD COLUMN correlativo_cvic_inicio INTEG
 // CVIC-ST — misma Comisión, nomenclatura y correlativo propios para la Secretaría Técnica (INE/CVIC/ST/###/año)
 try { db.exec(`ALTER TABLE anios_config ADD COLUMN correlativo_cvic_st_actual INTEGER NOT NULL DEFAULT 0`); } catch (_) {}
 try { db.exec(`ALTER TABLE anios_config ADD COLUMN correlativo_cvic_st_inicio INTEGER NOT NULL DEFAULT 1`); } catch (_) {}
+// Acuerdos de la CVIC (INE/CVIC/#/año, sin ceros): misma Comisión, serie y correlativo propios.
+try { db.exec(`ALTER TABLE anios_config ADD COLUMN correlativo_acuerdo_actual INTEGER NOT NULL DEFAULT 0`); } catch (_) {}
+try { db.exec(`ALTER TABLE anios_config ADD COLUMN correlativo_acuerdo_inicio INTEGER NOT NULL DEFAULT 0`); } catch (_) {}
 // Ámbito del firmante: 'deaj' (instrumentos DEAJ), 'cvic' (Comisión) o 'ambos'.
 try { db.exec(`ALTER TABLE firmantes ADD COLUMN ambito TEXT NOT NULL DEFAULT 'deaj'`); } catch (_) {}
 // Rol dentro de la Comisión CVIC: 'presidencia' o 'secretaria_tecnica' (determina cuál nomenclatura puede firmar).
@@ -120,6 +123,13 @@ try {
   for (const o of conAcuse) {
     if (yaTiene.get(o.id).c === 0) ins.run(o.id, o.acuse_path, 'Acuse');
   }
+} catch (_) {}
+
+// v1.9.0 tuvo una sección aparte de acuerdos (tablas cvic_acuerdos*); ahora los acuerdos son
+// un tipo más de documento ('acuerdo' en oficios). Se quitan esas tablas solo si quedaron vacías.
+try {
+  const vacias = db.prepare(`SELECT COUNT(*) c FROM cvic_acuerdos`).get().c === 0;
+  if (vacias) db.exec(`DROP TABLE IF EXISTS cvic_acuerdo_adjuntos; DROP TABLE IF EXISTS cvic_acuerdos;`);
 } catch (_) {}
 
 // Seed: default admin

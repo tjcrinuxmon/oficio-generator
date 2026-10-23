@@ -91,11 +91,36 @@ const upload = multer({
   limits: { fileSize: 20 * 1024 * 1024 },
 });
 
+// Archivos de los acuerdos CVIC: PDF o Word, hasta 10, conservando la extensión.
+const EXT_ACUERDO = ['.pdf', '.doc', '.docx'];
+const MAX_ADJUNTOS_ACUERDO = 10;
+const uploadAcuerdo = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, path.join(__dirname, '../uploads')),
+    filename: (req, file, cb) => cb(null, `acuerdo_${req.params.id || 'nuevo'}_${Date.now()}_${Math.round(Math.random() * 1e6)}${path.extname(file.originalname).toLowerCase()}`),
+  }),
+  fileFilter: (req, file, cb) => {
+    // multer entrega el nombre en latin1; se reinterpreta como UTF-8 para conservar acentos.
+    file.originalname = Buffer.from(file.originalname, 'latin1').toString('utf8');
+    if (EXT_ACUERDO.includes(path.extname(file.originalname).toLowerCase())) cb(null, true);
+    else cb(new Error('Solo se permiten archivos PDF o Word'));
+  },
+  limits: { fileSize: 20 * 1024 * 1024, files: MAX_ADJUNTOS_ACUERDO },
+});
+const MSG_LIMITE_ACUERDO = (err) =>
+  err.code === 'LIMIT_FILE_SIZE' ? 'Cada archivo debe pesar como máximo 20 MB'
+  : (err.code === 'LIMIT_FILE_COUNT' || err.code === 'LIMIT_UNEXPECTED_FILE') ? `Máximo ${MAX_ADJUNTOS_ACUERDO} archivos por acuerdo`
+  : err.message;
+const borrarSubidos = (files = []) => files.forEach(f => fs.unlink(f.path, () => {}));
+
+const CONTENT_TYPES = { '.pdf': 'application/pdf', '.doc': 'application/msword', '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' };
+
 function buildOficioNumero(correlativo, anio, tipo, modalidadCvic) {
   const num = String(correlativo).padStart(3, '0');
   if (tipo === 'opinion')       return `INE/DEAJ/OTJ/${num}/${anio}`;
   if (tipo === 'dictamen')      return `INE/DEAJ/DTJ/${num}/${anio}`;
   if (tipo === 'certificacion') return `DEAJ-${num}-${anio}`;
+  if (tipo === 'acuerdo')       return `INE/CVIC/${correlativo}/${anio}`; // acuerdos: sin ceros a la izquierda
   if (tipo === 'cvic')          return modalidadCvic === 'secretaria_tecnica' ? `INE/CVIC/ST/${num}/${anio}` : `INE/CVIC/${num}/${anio}`;
   return `INE/DEAJ/${num}/${anio}`;
 }
@@ -110,6 +135,9 @@ const JOIN = `
 // (usuarios con esta área asignada) o un administrador pueden crearlos o verlos.
 const CVIC_AREA = 'Comisión de Verificación de Integridad en Candidaturas';
 const puedeCvic = (user) => user.rol === 'admin' || user.area === CVIC_AREA;
+// Tipos reservados a la Comisión: sus oficios y sus acuerdos.
+const TIPOS_CVIC = ['cvic', 'acuerdo'];
+const esTipoCvic = (tipo) => TIPOS_CVIC.includes(tipo);
 
 function buildWhere(query, userId, rol, userArea) {
   const { estatus, area, firmante_id, fecha_inicio, fecha_fin, q, tipo } = query;
@@ -119,11 +147,12 @@ function buildWhere(query, userId, rol, userArea) {
   if (rol === 'enlace') {
     where.push('o.area = ?'); params.push(userArea || '');
   } else if (rol !== 'admin') {
-    where.push('o.creado_por = ?'); params.push(userId);
+    // Los acuerdos son de toda la Comisión: cualquier usuario de la CVIC los ve.
+    where.push(userArea === CVIC_AREA ? `(o.creado_por = ? OR o.tipo = 'acuerdo')` : 'o.creado_por = ?'); params.push(userId);
   }
   // Los oficios CVIC solo los ve la propia Comisión (por área) o un administrador.
   if (!(rol === 'admin' || userArea === CVIC_AREA)) {
-    where.push(`(o.tipo IS NULL OR o.tipo <> 'cvic')`);
+    where.push(`(o.tipo IS NULL OR o.tipo NOT IN ('cvic', 'acuerdo'))`);
   }
   if (estatus)      { where.push('o.estatus = ?'); params.push(estatus); }
   if (area)         { where.push('o.area LIKE ?'); params.push(`%${area}%`); }
@@ -154,11 +183,11 @@ router.get('/:id', (req, res) => {
   if (req.user.rol === 'enlace') {
     ownerClause = 'AND o.area = ?'; params.push(req.user.area || '');
   } else if (req.user.rol !== 'admin') {
-    ownerClause = 'AND o.creado_por = ?'; params.push(req.user.id);
+    ownerClause = req.user.area === CVIC_AREA ? `AND (o.creado_por = ? OR o.tipo = 'acuerdo')` : 'AND o.creado_por = ?'; params.push(req.user.id);
   }
   const row = db.prepare(`SELECT o.*, f.nombre as firmante_nombre, f.cargo as firmante_cargo, f.es_titular, u.nombre as creado_por_nombre ${JOIN} WHERE o.id = ? ${ownerClause}`).get(...params);
   if (!row) return res.status(404).json({ error: 'Oficio no encontrado' });
-  if (row.tipo === 'cvic' && !puedeCvic(req.user)) return res.status(404).json({ error: 'Oficio no encontrado' });
+  if (esTipoCvic(row.tipo) && !puedeCvic(req.user)) return res.status(404).json({ error: 'Oficio no encontrado' });
   res.json(row);
 });
 
@@ -255,6 +284,51 @@ router.post('/generar', (req, res) => {
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
+});
+
+// POST /api/oficios/acuerdo — registra un acuerdo de la CVIC (multipart: fecha, sintesis, archivos[]).
+// No se genera Word: el acuerdo ya está aprobado y se sube. Autor y área son siempre la Comisión;
+// no lleva destinatario ni ID SAI. firmante_id es obligatorio (llave foránea): se guarda la
+// Presidencia de la Comisión, que no se muestra en pantalla ni en el Excel.
+router.post('/acuerdo', (req, res) => {
+  uploadAcuerdo.array('archivos', MAX_ADJUNTOS_ACUERDO)(req, res, (err) => {
+    if (err) return res.status(400).json({ error: MSG_LIMITE_ACUERDO(err) });
+    const files = req.files || [];
+    const fallar = (status, error) => { borrarSubidos(files); res.status(status).json({ error }); };
+
+    if (!puedeCvic(req.user)) return fallar(403, 'Solo la Comisión de Verificación de Integridad en Candidaturas o un administrador pueden registrar acuerdos');
+    const fecha = String(req.body.fecha || '').trim();
+    const sintesis = String(req.body.sintesis || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha) || !sintesis) return fallar(400, 'La fecha y la síntesis o título son obligatorias');
+    if (sintesis.length > 1000) return fallar(400, 'La síntesis o título no debe exceder 1000 caracteres');
+
+    const activo = db.prepare(`SELECT id, anio, correlativo_acuerdo_actual FROM anios_config WHERE activo = 1 LIMIT 1`).get();
+    if (!activo) return fallar(500, 'No hay año activo configurado');
+    if (parseInt(fecha.slice(0, 4)) !== activo.anio) return fallar(400, `La fecha del acuerdo debe ser de ${activo.anio} (año activo)`);
+    const presidencia = db.prepare(`SELECT id FROM firmantes WHERE cvic_rol = 'presidencia' ORDER BY activo DESC, id LIMIT 1`).get()
+                     || db.prepare(`SELECT id FROM firmantes WHERE es_titular = 1 ORDER BY id LIMIT 1`).get();
+    if (!presidencia) return fallar(500, 'No hay firmante de la Presidencia de la Comisión en el catálogo');
+
+    try {
+      const acuerdo = db.transaction(() => {
+        const maxReal = db.prepare(`SELECT COALESCE(MAX(correlativo), 0) AS max FROM oficios WHERE anio = ? AND tipo = 'acuerdo'`).get(activo.anio).max;
+        const correlativo = Math.max(activo.correlativo_acuerdo_actual || 0, maxReal) + 1;
+        const numero = buildOficioNumero(correlativo, activo.anio, 'acuerdo');
+        db.prepare(`UPDATE anios_config SET correlativo_acuerdo_actual = ? WHERE id = ?`).run(correlativo, activo.id);
+        const r = db.prepare(`INSERT INTO oficios (numero_oficio, correlativo, anio, tipo, fecha, destinatario, cargo_destinatario, asunto, firmante_id, solicita, area, justificacion_sai, estatus, acuse_path, creado_por)
+                              VALUES (?, ?, ?, 'acuerdo', ?, '', '', ?, ?, ?, ?, ?, ?, ?, ?)`)
+          .run(numero, correlativo, activo.anio, fecha, sintesis, presidencia.id, req.user.nombre, CVIC_AREA,
+               'No aplica a acuerdos de la Comisión de Verificación de Integridad en Candidaturas.',
+               files.length ? 'archivado' : 'borrador', files[0]?.path || null, req.user.id);
+        const ins = db.prepare(`INSERT INTO oficio_adjuntos (oficio_id, path, original_name, size) VALUES (?, ?, ?, ?)`);
+        for (const f of files) ins.run(r.lastInsertRowid, f.path, f.originalname, f.size);
+        return db.prepare(`SELECT o.*, u.nombre as creado_por_nombre ${JOIN} WHERE o.id = ?`).get(r.lastInsertRowid);
+      })();
+      res.status(201).json(acuerdo);
+    } catch (e) {
+      fallar(500, e.message);
+    }
+  });
 });
 
 // POST /api/oficios/carga-masiva
@@ -589,14 +663,20 @@ router.get('/carga-masiva/plantilla', async (req, res) => {
 // PUT /api/oficios/:id
 router.put('/:id', (req, res) => {
   const { estatus, fecha, destinatario, cargo_destinatario, institucion, asunto, cuerpo, id_sai, justificacion_sai, sintesis, firmante_id, justificacion_firmante, razon, solicita, area, url_solicitante, razon_reactivacion, reviso_nombre, reviso_puesto, elaboro_nombre, elaboro_puesto, ambito, incluir_vre } = req.body;
-  const ownerClause = req.user.rol !== 'admin' ? 'AND creado_por = ?' : '';
+  const ownerClause = req.user.rol === 'admin' ? ''
+    : req.user.area === CVIC_AREA ? `AND (creado_por = ? OR tipo = 'acuerdo')` // acuerdos: los edita toda la Comisión
+    : 'AND creado_por = ?';
   const checkParams = req.user.rol !== 'admin' ? [req.params.id, req.user.id] : [req.params.id];
-  const oficioActual = db.prepare(`SELECT id, tipo, modalidad_cvic FROM oficios WHERE id = ? ${ownerClause}`).get(...checkParams);
+  const oficioActual = db.prepare(`SELECT id, tipo, modalidad_cvic, anio FROM oficios WHERE id = ? ${ownerClause}`).get(...checkParams);
   if (!oficioActual) {
     return res.status(404).json({ error: 'Oficio no encontrado' });
   }
-  if (oficioActual.tipo === 'cvic' && !puedeCvic(req.user)) {
+  if (esTipoCvic(oficioActual.tipo) && !puedeCvic(req.user)) {
     return res.status(404).json({ error: 'Oficio no encontrado' });
+  }
+  // El número del acuerdo lleva el año: la fecha no puede salirse de ese año.
+  if (oficioActual.tipo === 'acuerdo' && fecha && parseInt(String(fecha).slice(0, 4)) !== oficioActual.anio) {
+    return res.status(400).json({ error: `La fecha del acuerdo debe ser de ${oficioActual.anio}` });
   }
   // Un oficio CVIC ya numerado no puede cambiar a un firmante de la otra modalidad (Presidencia ↔ Secretaría Técnica).
   if (firmante_id && oficioActual.tipo === 'cvic') {
@@ -684,17 +764,20 @@ router.get('/:id/acuses', (req, res) => {
   res.json(rows);
 });
 
-// POST /api/oficios/:id/acuse — agrega un adjunto (hasta 3, no reemplaza)
+// POST /api/oficios/:id/acuse — agrega un adjunto (hasta 3, no reemplaza; acuerdos: hasta 10, PDF o Word)
 router.post('/:id/acuse', (req, res) => {
-  upload.single('acuse')(req, res, (err) => {
-    if (err) return res.status(400).json({ error: err.message });
-    if (!req.file) return res.status(400).json({ error: 'Archivo PDF requerido' });
+  const tipo = db.prepare(`SELECT tipo FROM oficios WHERE id = ?`).get(req.params.id)?.tipo;
+  if (esTipoCvic(tipo) && !puedeCvic(req.user)) return res.status(404).json({ error: 'Oficio no encontrado' });
+  const esAcuerdo = tipo === 'acuerdo';
+  const max = esAcuerdo ? MAX_ADJUNTOS_ACUERDO : MAX_ADJUNTOS;
+  (esAcuerdo ? uploadAcuerdo : upload).single('acuse')(req, res, (err) => {
+    if (err) return res.status(400).json({ error: esAcuerdo ? MSG_LIMITE_ACUERDO(err) : err.message });
+    if (!req.file) return res.status(400).json({ error: esAcuerdo ? 'Archivo PDF o Word requerido' : 'Archivo PDF requerido' });
 
-    const existing = db.prepare(`SELECT id FROM oficios WHERE id = ?`).get(req.params.id);
-    if (!existing) { fs.unlink(req.file.path, () => {}); return res.status(404).json({ error: 'Oficio no encontrado' }); }
+    if (!tipo) { fs.unlink(req.file.path, () => {}); return res.status(404).json({ error: 'Oficio no encontrado' }); }
 
     const count = db.prepare(`SELECT COUNT(*) c FROM oficio_adjuntos WHERE oficio_id = ?`).get(req.params.id).c;
-    if (count >= MAX_ADJUNTOS) { fs.unlink(req.file.path, () => {}); return res.status(400).json({ error: `Máximo ${MAX_ADJUNTOS} archivos por oficio` }); }
+    if (count >= max) { fs.unlink(req.file.path, () => {}); return res.status(400).json({ error: `Máximo ${max} archivos por ${esAcuerdo ? 'acuerdo' : 'oficio'}` }); }
 
     db.prepare(`INSERT INTO oficio_adjuntos (oficio_id, path, original_name, size) VALUES (?, ?, ?, ?)`)
       .run(req.params.id, req.file.path, req.file.originalname, req.file.size);
@@ -709,9 +792,11 @@ router.get('/:id/acuse/:adjId', (req, res) => {
   const adj = db.prepare(`SELECT a.path, a.original_name, o.numero_oficio FROM oficio_adjuntos a JOIN oficios o ON o.id = a.oficio_id WHERE a.id = ? AND a.oficio_id = ?`).get(req.params.adjId, req.params.id);
   if (!adj || !fs.existsSync(adj.path)) return res.status(404).json({ error: 'Archivo no disponible' });
   let name = (adj.original_name || `Acuse_${adj.numero_oficio}`).replace(/[/\\]/g, '_');
-  if (!name.toLowerCase().endsWith('.pdf')) name += '.pdf';
-  res.setHeader('Content-Disposition', `attachment; filename="${name}"`);
-  res.setHeader('Content-Type', 'application/pdf');
+  // La extensión real (PDF o, en acuerdos, Word) sale del archivo guardado.
+  const ext = path.extname(adj.path).toLowerCase() || '.pdf';
+  if (!name.toLowerCase().endsWith(ext)) name += ext;
+  res.attachment(name); // codifica nombres con acentos o guiones largos (filename*)
+  res.setHeader('Content-Type', CONTENT_TYPES[ext] || 'application/octet-stream');
   fs.createReadStream(adj.path).pipe(res);
 });
 
@@ -743,8 +828,9 @@ router.get('/:id/acuse', (req, res) => {
   if (!row) return res.status(404).json({ error: 'Oficio no encontrado' });
   if (!row.acuse_path || !fs.existsSync(row.acuse_path)) return res.status(404).json({ error: 'Acuse no disponible' });
   const safeName = row.numero_oficio.replace(/\//g, '_');
-  res.setHeader('Content-Disposition', `attachment; filename="Acuse_${safeName}.pdf"`);
-  res.setHeader('Content-Type', 'application/pdf');
+  const ext = path.extname(row.acuse_path).toLowerCase() || '.pdf';
+  res.setHeader('Content-Disposition', `attachment; filename="Acuse_${safeName}${ext}"`);
+  res.setHeader('Content-Type', CONTENT_TYPES[ext] || 'application/octet-stream');
   fs.createReadStream(row.acuse_path).pipe(res);
 });
 

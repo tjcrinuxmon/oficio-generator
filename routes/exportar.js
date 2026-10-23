@@ -34,13 +34,17 @@ const router = express.Router();
 router.use(authMiddleware);
 
 const ESTATUS_LABEL = { borrador: 'Borrador', enviado: 'Enviado', recibido: 'Recibido', archivado: 'Archivado', cancelado: 'Cancelado' };
-const TIPO_LABEL    = { oficio: 'Oficio', opinion: 'Opinión Técnica', dictamen: 'Dictamen', certificacion: 'Certificación', cvic: 'Oficio CVIC' };
+const TIPO_LABEL    = { oficio: 'Oficio', opinion: 'Opinión Técnica', dictamen: 'Dictamen', certificacion: 'Certificación', cvic: 'Oficio CVIC', acuerdo: 'Acuerdo CVIC' };
 
 function getOficios(query, user) {
   const { estatus, tipo, area, firmante_id, fecha_inicio, fecha_fin, q } = query;
   const where = ['1=1'];
   const params = [];
-  if (user.rol !== 'admin') { where.push('o.creado_por = ?'); params.push(parseInt(user.id)); }
+  if (user.rol !== 'admin') {
+    // Los acuerdos son de toda la Comisión: cualquier usuario de la CVIC los exporta.
+    where.push(user.area === 'Comisión de Verificación de Integridad en Candidaturas' ? `(o.creado_por = ? OR o.tipo = 'acuerdo')` : 'o.creado_por = ?');
+    params.push(parseInt(user.id));
+  }
   if (estatus)      { where.push("o.estatus = ?"); params.push(estatus); }
   if (tipo)         { where.push("COALESCE(o.tipo,'oficio') = ?"); params.push(tipo); }
   if (area)         { where.push("o.area LIKE ?"); params.push(`%${area}%`); }
@@ -128,7 +132,7 @@ router.get('/excel', async (req, res) => {
       TIPO_LABEL[row.tipo] || row.tipo,
       dest,
       row.asunto || '—',
-      row.firmante_nombre || '—',
+      row.tipo === 'acuerdo' ? '—' : (row.firmante_nombre || '—'),
       row.area || '—',
       ESTATUS_LABEL[row.estatus] || row.estatus,
       fmtFecha(row.creado_en),
@@ -168,6 +172,8 @@ router.get('/docx/:id', async (req, res) => {
      WHERE o.id = ? ${ownerClause}`
   ).get(...params);
   if (!o) return res.status(404).json({ error: 'Oficio no encontrado' });
+  // Los acuerdos CVIC se suben ya firmados; no se genera Word.
+  if (o.tipo === 'acuerdo') return res.status(400).json({ error: 'Los acuerdos no generan Word: descarga sus archivos desde el detalle' });
 
   try {
     const logoBuffer = getLogoBuffer();
