@@ -758,23 +758,39 @@ function sincronizarAcusePath(oficioId) {
   return !!first;
 }
 
+// Adjuntos: solo quien puede ver el oficio (misma regla que GET /:id) puede listar, descargar,
+// subir o borrar sus archivos. Antes bastaba con estar autenticado y conocer el id.
+// Va antes de multer para no escribir en disco archivos de una petición no autorizada.
+function exigirOficio(req, res, next) {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id < 1) return res.status(404).json({ error: 'Oficio no encontrado' });
+  let ownerClause = '';
+  const params = [id];
+  if (req.user.rol === 'enlace') {
+    ownerClause = 'AND area = ?'; params.push(req.user.area || '');
+  } else if (req.user.rol !== 'admin') {
+    ownerClause = req.user.area === CVIC_AREA ? `AND (creado_por = ? OR tipo = 'acuerdo')` : 'AND creado_por = ?'; params.push(req.user.id);
+  }
+  const oficio = db.prepare(`SELECT id, tipo, numero_oficio, acuse_path FROM oficios WHERE id = ? ${ownerClause}`).get(...params);
+  if (!oficio || (esTipoCvic(oficio.tipo) && !puedeCvic(req.user))) return res.status(404).json({ error: 'Oficio no encontrado' });
+  req.oficio = oficio;
+  next();
+}
+
 // GET /api/oficios/:id/acuses — lista de adjuntos
-router.get('/:id/acuses', (req, res) => {
-  const rows = db.prepare(`SELECT id, original_name, size, creado_en FROM oficio_adjuntos WHERE oficio_id = ? ORDER BY id`).all(req.params.id);
+router.get('/:id/acuses', exigirOficio, (req, res) => {
+  const rows = db.prepare(`SELECT id, original_name, size, creado_en FROM oficio_adjuntos WHERE oficio_id = ? ORDER BY id`).all(req.oficio.id);
   res.json(rows);
 });
 
 // POST /api/oficios/:id/acuse — agrega un adjunto (hasta 3, no reemplaza; acuerdos: hasta 10, PDF o Word)
-router.post('/:id/acuse', (req, res) => {
-  const tipo = db.prepare(`SELECT tipo FROM oficios WHERE id = ?`).get(req.params.id)?.tipo;
-  if (esTipoCvic(tipo) && !puedeCvic(req.user)) return res.status(404).json({ error: 'Oficio no encontrado' });
+router.post('/:id/acuse', exigirOficio, (req, res) => {
+  const tipo = req.oficio.tipo;
   const esAcuerdo = tipo === 'acuerdo';
   const max = esAcuerdo ? MAX_ADJUNTOS_ACUERDO : MAX_ADJUNTOS;
   (esAcuerdo ? uploadAcuerdo : upload).single('acuse')(req, res, (err) => {
     if (err) return res.status(400).json({ error: esAcuerdo ? MSG_LIMITE_ACUERDO(err) : err.message });
     if (!req.file) return res.status(400).json({ error: esAcuerdo ? 'Archivo PDF o Word requerido' : 'Archivo PDF requerido' });
-
-    if (!tipo) { fs.unlink(req.file.path, () => {}); return res.status(404).json({ error: 'Oficio no encontrado' }); }
 
     const count = db.prepare(`SELECT COUNT(*) c FROM oficio_adjuntos WHERE oficio_id = ?`).get(req.params.id).c;
     if (count >= max) { fs.unlink(req.file.path, () => {}); return res.status(400).json({ error: `Máximo ${max} archivos por ${esAcuerdo ? 'acuerdo' : 'oficio'}` }); }
@@ -788,7 +804,7 @@ router.post('/:id/acuse', (req, res) => {
 });
 
 // GET /api/oficios/:id/acuse/:adjId — descarga un adjunto específico
-router.get('/:id/acuse/:adjId', (req, res) => {
+router.get('/:id/acuse/:adjId', exigirOficio, (req, res) => {
   const adj = db.prepare(`SELECT a.path, a.original_name, o.numero_oficio FROM oficio_adjuntos a JOIN oficios o ON o.id = a.oficio_id WHERE a.id = ? AND a.oficio_id = ?`).get(req.params.adjId, req.params.id);
   if (!adj || !fs.existsSync(adj.path)) return res.status(404).json({ error: 'Archivo no disponible' });
   let name = (adj.original_name || `Acuse_${adj.numero_oficio}`).replace(/[/\\]/g, '_');
@@ -801,7 +817,7 @@ router.get('/:id/acuse/:adjId', (req, res) => {
 });
 
 // DELETE /api/oficios/:id/acuse/:adjId — elimina un adjunto específico
-router.delete('/:id/acuse/:adjId', (req, res) => {
+router.delete('/:id/acuse/:adjId', exigirOficio, (req, res) => {
   const adj = db.prepare(`SELECT path FROM oficio_adjuntos WHERE id = ? AND oficio_id = ?`).get(req.params.adjId, req.params.id);
   if (!adj) return res.status(404).json({ error: 'Adjunto no encontrado' });
   if (adj.path && fs.existsSync(adj.path)) { try { fs.unlinkSync(adj.path); } catch (_) {} }
@@ -812,7 +828,7 @@ router.delete('/:id/acuse/:adjId', (req, res) => {
 });
 
 // DELETE /api/oficios/:id/acuse — elimina TODOS los adjuntos (regresa a Borrador)
-router.delete('/:id/acuse', (req, res) => {
+router.delete('/:id/acuse', exigirOficio, (req, res) => {
   const rows = db.prepare(`SELECT path FROM oficio_adjuntos WHERE oficio_id = ?`).all(req.params.id);
   for (const r of rows) if (r.path && fs.existsSync(r.path)) { try { fs.unlinkSync(r.path); } catch (_) {} }
   db.prepare(`DELETE FROM oficio_adjuntos WHERE oficio_id = ?`).run(req.params.id);
@@ -823,9 +839,8 @@ router.delete('/:id/acuse', (req, res) => {
 });
 
 // GET /api/oficios/:id/acuse — descarga el acuse principal (compatibilidad con Historial)
-router.get('/:id/acuse', (req, res) => {
-  const row = db.prepare(`SELECT acuse_path, numero_oficio FROM oficios WHERE id = ?`).get(req.params.id);
-  if (!row) return res.status(404).json({ error: 'Oficio no encontrado' });
+router.get('/:id/acuse', exigirOficio, (req, res) => {
+  const row = req.oficio;
   if (!row.acuse_path || !fs.existsSync(row.acuse_path)) return res.status(404).json({ error: 'Acuse no disponible' });
   const safeName = row.numero_oficio.replace(/\//g, '_');
   const ext = path.extname(row.acuse_path).toLowerCase() || '.pdf';
