@@ -79,6 +79,9 @@ try { db.exec(`ALTER TABLE anios_config ADD COLUMN correlativo_cvic_inicio INTEG
 // CVIC-ST — misma Comisión, nomenclatura y correlativo propios para la Secretaría Técnica (INE/CVIC/ST/###/año)
 try { db.exec(`ALTER TABLE anios_config ADD COLUMN correlativo_cvic_st_actual INTEGER NOT NULL DEFAULT 0`); } catch (_) {}
 try { db.exec(`ALTER TABLE anios_config ADD COLUMN correlativo_cvic_st_inicio INTEGER NOT NULL DEFAULT 1`); } catch (_) {}
+// Acuerdos de la CVIC (INE/CVIC/#/año, sin ceros): misma Comisión, serie y correlativo propios.
+try { db.exec(`ALTER TABLE anios_config ADD COLUMN correlativo_acuerdo_actual INTEGER NOT NULL DEFAULT 0`); } catch (_) {}
+try { db.exec(`ALTER TABLE anios_config ADD COLUMN correlativo_acuerdo_inicio INTEGER NOT NULL DEFAULT 0`); } catch (_) {}
 // Ámbito del firmante: 'deaj' (instrumentos DEAJ), 'cvic' (Comisión) o 'ambos'.
 try { db.exec(`ALTER TABLE firmantes ADD COLUMN ambito TEXT NOT NULL DEFAULT 'deaj'`); } catch (_) {}
 // Rol dentro de la Comisión CVIC: 'presidencia' o 'secretaria_tecnica' (determina cuál nomenclatura puede firmar).
@@ -122,36 +125,12 @@ try {
   }
 } catch (_) {}
 
-// Acuerdos (y, más adelante, actas) de la CVIC: documentos ya aprobados que la Comisión sube.
-// Consecutivo propio por tipo y año (INE/CVIC/1/2026, sin ceros); el año sale de la fecha.
-db.exec(`
-  CREATE TABLE IF NOT EXISTS cvic_acuerdos (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    tipo TEXT NOT NULL DEFAULT 'acuerdo',
-    numero TEXT NOT NULL,
-    correlativo INTEGER NOT NULL,
-    anio INTEGER NOT NULL,
-    fecha TEXT NOT NULL,
-    sintesis TEXT NOT NULL,
-    autor TEXT NOT NULL,
-    creado_por INTEGER NOT NULL,
-    creado_en DATETIME DEFAULT (datetime('now','localtime')),
-    actualizado_en DATETIME DEFAULT (datetime('now','localtime')),
-    UNIQUE (tipo, anio, correlativo),
-    FOREIGN KEY (creado_por) REFERENCES usuarios(id)
-  )
-`);
-db.exec(`
-  CREATE TABLE IF NOT EXISTS cvic_acuerdo_adjuntos (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    acuerdo_id INTEGER NOT NULL,
-    path TEXT NOT NULL,
-    original_name TEXT,
-    size INTEGER,
-    creado_en DATETIME DEFAULT (datetime('now','localtime')),
-    FOREIGN KEY (acuerdo_id) REFERENCES cvic_acuerdos(id) ON DELETE CASCADE
-  )
-`);
+// v1.9.0 tuvo una sección aparte de acuerdos (tablas cvic_acuerdos*); ahora los acuerdos son
+// un tipo más de documento ('acuerdo' en oficios). Se quitan esas tablas solo si quedaron vacías.
+try {
+  const vacias = db.prepare(`SELECT COUNT(*) c FROM cvic_acuerdos`).get().c === 0;
+  if (vacias) db.exec(`DROP TABLE IF EXISTS cvic_acuerdo_adjuntos; DROP TABLE IF EXISTS cvic_acuerdos;`);
+} catch (_) {}
 
 // Seed: default admin
 if (!db.prepare(`SELECT id FROM usuarios WHERE rol = 'admin' LIMIT 1`).get()) {

@@ -46,10 +46,6 @@
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="14" x2="10" y2="14"/><line x1="14" y1="14" x2="16" y2="14"/><line x1="8" y1="18" x2="10" y2="18"/></svg>
           <span class="nav-label">Historial</span>
         </a>
-        <a href="#" class="nav-item cvic-only" data-view="acuerdos" id="nav-acuerdos">
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><polyline points="9 10 11 12 15 8"/></svg>
-          <span class="nav-label">Acuerdos CVIC</span>
-        </a>
         <div class="nav-separator"></div>
         <a href="#" class="nav-item admin-only" data-view="firmantes" id="nav-firmantes">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
@@ -198,6 +194,25 @@
             </div>
           </div>
 
+          <!-- Acuerdos CVIC (solo visible para la Comisión y administradores) -->
+          <div class="dash-tipo-panel cvic-only">
+            <div class="dash-tipo-header dash-tipo-header-cvic">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><polyline points="9 10 11 12 15 8"/></svg>
+              <span class="dash-tipo-nombre">Acuerdos CVIC</span>
+              <span class="dash-tipo-total dash-tipo-total-cvic" id="ac-total">—</span>
+            </div>
+            <div class="dash-mini-stats">
+              <div class="mini-stat">
+                <span class="mini-stat-value" id="ac-borrador">—</span>
+                <span class="mini-stat-label">Sin archivo</span>
+              </div>
+              <div class="mini-stat">
+                <span class="mini-stat-value mini-stat-archivado" id="ac-archivado">—</span>
+                <span class="mini-stat-label">Con archivo</span>
+              </div>
+            </div>
+          </div>
+
         </div>
 
         <!-- Action info cards -->
@@ -258,6 +273,10 @@
             <div class="section-title">Últimos oficios CVIC</div>
             <div id="dash-recientes-cvic" class="recientes-list"></div>
           </div>
+          <div class="cvic-only">
+            <div class="section-title">Últimos acuerdos CVIC</div>
+            <div id="dash-recientes-acuerdo" class="recientes-list"></div>
+          </div>
         </div>
       </section>
 
@@ -313,7 +332,68 @@
             <div class="selector-card-desc">Oficio de la Comisión de Verificación de Integridad en Candidaturas del Instituto Nacional Electoral.</div>
             <button class="btn btn-primary selector-card-btn selector-btn-cvic" type="button">Generar Oficio CVIC</button>
           </div>
+          <div class="selector-card selector-card-cvic cvic-only" onclick="selectTipo('acuerdo')">
+            <div class="selector-card-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><polyline points="9 10 11 12 15 8"/></svg>
+            </div>
+            <div class="selector-card-title">Acuerdo CVIC</div>
+            <div class="selector-card-nomenclatura">INE/CVIC/#/año</div>
+            <div class="selector-card-desc">Registro de los acuerdos aprobados por la Comisión de Verificación de Integridad en Candidaturas, con sus archivos.</div>
+            <button class="btn btn-primary selector-card-btn selector-btn-cvic" type="button">Registrar Acuerdo</button>
+          </div>
         </div>
+      </section>
+
+      <!-- FORMULARIO DE ACUERDO CVIC (se sube ya aprobado: no genera Word) -->
+      <section id="view-nuevo-acuerdo" class="view">
+        <div class="view-header">
+          <div>
+            <a href="#" class="btn-back-selector" onclick="showView('selector'); return false;">← Cambiar tipo de documento</a>
+            <h1>Nuevo Acuerdo CVIC</h1>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+            <span class="tipo-badge tipo-cvic" style="font-size:13px;padding:5px 14px">Acuerdo CVIC</span>
+            <div id="ac-numero-preview" class="numero-preview hidden">
+              <span class="numero-label">Número asignado:</span>
+              <span class="numero-value" id="ac-numero-generado"></span>
+            </div>
+          </div>
+        </div>
+        <form id="nuevo-acuerdo-form" class="oficio-form card">
+          <div class="form-grid">
+            <div class="form-group col-2">
+              <label for="ac-tipo">Tipo de contenido</label>
+              <select id="ac-tipo" disabled>
+                <option value="acuerdo" selected>Acuerdo</option>
+              </select>
+            </div>
+            <div class="form-group col-2">
+              <label for="ac-fecha">Fecha <span class="required">*</span></label>
+              <input type="date" id="ac-fecha" required />
+            </div>
+            <div class="form-group col-full">
+              <label for="ac-sintesis">Síntesis o título <span class="required">*</span></label>
+              <textarea id="ac-sintesis" rows="3" maxlength="1000" required placeholder="Acuerdo de la Comisión de Verificación de Integridad en Candidaturas por el que se..."></textarea>
+            </div>
+            <div class="form-group col-full">
+              <label>Autor</label>
+              <div style="padding:8px 12px;background:var(--bg-secondary,#f8f5fb);border:1.5px solid var(--border,#e2d9ee);border-radius:8px;font-size:14px;min-height:38px;display:flex;align-items:center;">Comisión de Verificación de Integridad en Candidaturas</div>
+            </div>
+            <div class="form-group col-full">
+              <label for="ac-archivos">Archivos</label>
+              <input type="file" id="ac-archivos" accept=".pdf,.doc,.docx" multiple />
+              <small style="color:var(--text-muted)">PDF o Word · hasta 10 archivos de 20 MB. Puedes agregar más después desde el Historial.</small>
+            </div>
+          </div>
+          <div id="ac-error" class="form-error hidden"></div>
+          <div class="form-actions">
+            <button type="reset" class="btn btn-secondary">Limpiar</button>
+            <button type="submit" class="btn btn-primary selector-btn-cvic" id="btn-registrar-acuerdo">
+              <span class="btn-text">Registrar Acuerdo</span>
+              <span class="btn-spinner hidden"></span>
+            </button>
+          </div>
+        </form>
       </section>
 
       <!-- FORMULARIO DE GENERACIÓN -->
@@ -520,6 +600,10 @@
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V6z"/><polyline points="9 2 9 6 13 6"/><path d="M5.5 10 7 11.5 10 8.5"/></svg>
             CVIC
           </button>
+          <button class="tipo-tab cvic-only" data-tipo="acuerdo">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 13a1.5 1.5 0 0 1 1.5-1.5H13"/><path d="M4.5 1.5H13v13H4.5A1.5 1.5 0 0 1 3 13V3a1.5 1.5 0 0 1 1.5-1.5z"/><polyline points="6 7 7.5 8.5 10 6"/></svg>
+            Acuerdos CVIC
+          </button>
         </div>
         <div class="filters-bar card">
           <input type="text" id="filter-q" placeholder="🔍 Buscar por número, destinatario, asunto..."
@@ -575,36 +659,6 @@
         <div id="historial-pagination" class="pagination"></div>
       </section>
 
-      <!-- ACUERDOS CVIC -->
-      <section id="view-acuerdos" class="view cvic-only">
-        <div class="view-header">
-          <h1>Acuerdos de la Comisión</h1>
-          <button class="btn btn-primary" id="btn-nuevo-acuerdo">+ Nuevo Acuerdo</button>
-        </div>
-        <div class="filters-bar card">
-          <input type="text" id="acuerdos-q" placeholder="🔍 Buscar por número o síntesis..." class="filter-search" />
-          <select id="acuerdos-anio" class="filter-select"><option value="">Todos los años</option></select>
-          <button class="btn btn-primary btn-sm" id="btn-acuerdos-filtrar">Filtrar</button>
-          <button class="btn btn-ghost btn-sm" id="btn-acuerdos-limpiar">Limpiar</button>
-        </div>
-        <div class="table-wrapper card">
-          <table class="data-table" id="acuerdos-table">
-            <thead>
-              <tr>
-                <th>Número</th>
-                <th>Tipo</th>
-                <th>Fecha</th>
-                <th>Síntesis / título</th>
-                <th>Archivos</th>
-                <th>Acciones</th>
-              </tr>
-            </thead>
-            <tbody id="acuerdos-tbody"></tbody>
-          </table>
-          <div id="acuerdos-empty" class="table-empty hidden">No hay acuerdos registrados</div>
-        </div>
-      </section>
-
       <!-- FIRMANTES -->
       <section id="view-firmantes" class="view admin-only">
         <div class="view-header">
@@ -645,6 +699,7 @@
                 <th>Certificaciones</th>
                 <th>CVIC</th>
                 <th>CVIC-ST</th>
+                <th>Acuerdos CVIC</th>
                 <th>Estado</th>
                 <th>Acciones</th>
               </tr>
