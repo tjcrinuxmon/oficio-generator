@@ -122,6 +122,37 @@ try {
   }
 } catch (_) {}
 
+// Acuerdos (y, más adelante, actas) de la CVIC: documentos ya aprobados que la Comisión sube.
+// Consecutivo propio por tipo y año (INE/CVIC/1/2026, sin ceros); el año sale de la fecha.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS cvic_acuerdos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tipo TEXT NOT NULL DEFAULT 'acuerdo',
+    numero TEXT NOT NULL,
+    correlativo INTEGER NOT NULL,
+    anio INTEGER NOT NULL,
+    fecha TEXT NOT NULL,
+    sintesis TEXT NOT NULL,
+    autor TEXT NOT NULL,
+    creado_por INTEGER NOT NULL,
+    creado_en DATETIME DEFAULT (datetime('now','localtime')),
+    actualizado_en DATETIME DEFAULT (datetime('now','localtime')),
+    UNIQUE (tipo, anio, correlativo),
+    FOREIGN KEY (creado_por) REFERENCES usuarios(id)
+  )
+`);
+db.exec(`
+  CREATE TABLE IF NOT EXISTS cvic_acuerdo_adjuntos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    acuerdo_id INTEGER NOT NULL,
+    path TEXT NOT NULL,
+    original_name TEXT,
+    size INTEGER,
+    creado_en DATETIME DEFAULT (datetime('now','localtime')),
+    FOREIGN KEY (acuerdo_id) REFERENCES cvic_acuerdos(id) ON DELETE CASCADE
+  )
+`);
+
 // Seed: default admin
 if (!db.prepare(`SELECT id FROM usuarios WHERE rol = 'admin' LIMIT 1`).get()) {
   const adminPwd = process.env.ADMIN_SEED_PASSWORD || require('crypto').randomBytes(12).toString('base64url');

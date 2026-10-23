@@ -46,6 +46,10 @@
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="14" x2="10" y2="14"/><line x1="14" y1="14" x2="16" y2="14"/><line x1="8" y1="18" x2="10" y2="18"/></svg>
           <span class="nav-label">Historial</span>
         </a>
+        <a href="#" class="nav-item cvic-only" data-view="acuerdos" id="nav-acuerdos">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><polyline points="9 10 11 12 15 8"/></svg>
+          <span class="nav-label">Acuerdos CVIC</span>
+        </a>
         <div class="nav-separator"></div>
         <a href="#" class="nav-item admin-only" data-view="firmantes" id="nav-firmantes">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
@@ -569,6 +573,36 @@
           <div id="historial-empty" class="table-empty hidden">No se encontraron documentos</div>
         </div>
         <div id="historial-pagination" class="pagination"></div>
+      </section>
+
+      <!-- ACUERDOS CVIC -->
+      <section id="view-acuerdos" class="view cvic-only">
+        <div class="view-header">
+          <h1>Acuerdos de la Comisión</h1>
+          <button class="btn btn-primary" id="btn-nuevo-acuerdo">+ Nuevo Acuerdo</button>
+        </div>
+        <div class="filters-bar card">
+          <input type="text" id="acuerdos-q" placeholder="🔍 Buscar por número o síntesis..." class="filter-search" />
+          <select id="acuerdos-anio" class="filter-select"><option value="">Todos los años</option></select>
+          <button class="btn btn-primary btn-sm" id="btn-acuerdos-filtrar">Filtrar</button>
+          <button class="btn btn-ghost btn-sm" id="btn-acuerdos-limpiar">Limpiar</button>
+        </div>
+        <div class="table-wrapper card">
+          <table class="data-table" id="acuerdos-table">
+            <thead>
+              <tr>
+                <th>Número</th>
+                <th>Tipo</th>
+                <th>Fecha</th>
+                <th>Síntesis / título</th>
+                <th>Archivos</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="acuerdos-tbody"></tbody>
+          </table>
+          <div id="acuerdos-empty" class="table-empty hidden">No hay acuerdos registrados</div>
+        </div>
       </section>
 
       <!-- FIRMANTES -->

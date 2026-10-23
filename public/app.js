@@ -188,6 +188,7 @@ function showView(view) {
     if (view === 'firmantes') loadFirmantes();
     if (view === 'anios') loadAnios();
     if (view === 'usuarios') loadUsuarios();
+    if (view === 'acuerdos') loadAcuerdos();
 }
 
 // ── Dashboard helpers ────────────────────────────────
@@ -1395,6 +1396,209 @@ async function toggleUsuario(id, activo) {
     }
 }
 
+// ── Acuerdos CVIC ────────────────────────────────────
+// Por ahora solo "acuerdo"; las actas se agregarán como otra opción (con su propio consecutivo).
+const TIPOS_ACUERDO = { acuerdo: 'Acuerdo' };
+const escHtml = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+async function loadAcuerdos() {
+    const q = document.getElementById('acuerdos-q').value.trim();
+    const anioSel = document.getElementById('acuerdos-anio');
+    const params = new URLSearchParams();
+    if (q) params.set('q', q);
+    if (anioSel.value) params.set('anio', anioSel.value);
+    try {
+        const rows = await api('GET', `/acuerdos?${params}`);
+        state.acuerdos = rows;
+        // Llena el filtro de años con los presentes (solo cuando no hay filtro aplicado, para no perder opciones)
+        if (!q && !anioSel.value) {
+            const anios = [...new Set(rows.map(a => a.anio))].sort((a, b) => b - a);
+            anioSel.innerHTML = '<option value="">Todos los años</option>' + anios.map(a => `<option value="${a}">${a}</option>`).join('');
+        }
+        document.getElementById('acuerdos-empty').classList.toggle('hidden', rows.length > 0);
+        document.getElementById('acuerdos-tbody').innerHTML = rows.map(a => `
+      <tr>
+        <td><strong>${escHtml(a.numero)}</strong></td>
+        <td><span class="status-badge status-borrador">${TIPOS_ACUERDO[a.tipo] || escHtml(a.tipo)}</span></td>
+        <td style="white-space:nowrap">${formatFecha(a.fecha)}</td>
+        <td>${escHtml(a.sintesis)}</td>
+        <td>${a.num_adjuntos ? `${a.num_adjuntos} archivo${a.num_adjuntos > 1 ? 's' : ''}` : '<span style="color:var(--text-muted)">—</span>'}</td>
+        <td>
+          <div class="table-actions">
+            <button class="btn btn-secondary btn-sm" onclick="openAcuerdoModal(${a.id})">Ver / editar</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteAcuerdo(${a.id})">Eliminar</button>
+          </div>
+        </td>
+      </tr>
+    `).join('');
+    } catch (e) {
+        toast(e.message, 'error');
+    }
+}
+
+// Vista previa del número (INE/CVIC/1/2026) a partir del consecutivo y el año de la fecha.
+function updateAcuerdoNumeroPreview() {
+    const n = document.getElementById('ac-correlativo').value;
+    const anio = (document.getElementById('ac-fecha').value || '').slice(0, 4);
+    document.getElementById('ac-numero-preview').textContent = n && anio ? `INE/CVIC/${n}/${anio}` : '—';
+}
+
+// Al crear: sugiere el siguiente consecutivo del año de la fecha elegida.
+async function sugerirCorrelativoAcuerdo() {
+    const anio = (document.getElementById('ac-fecha').value || '').slice(0, 4);
+    if (!anio) return;
+    try {
+        const sig = await api('GET', `/acuerdos/siguiente?tipo=${document.getElementById('ac-tipo').value}&anio=${anio}`);
+        document.getElementById('ac-correlativo').value = sig.correlativo;
+    } catch (_) {}
+    updateAcuerdoNumeroPreview();
+}
+
+async function openAcuerdoModal(id = null) {
+    let a = null;
+    if (id) {
+        try { a = await api('GET', `/acuerdos/${id}`); }
+        catch (e) { toast(e.message, 'error'); return; }
+    }
+    document.getElementById('modal-title').textContent = a ? `Acuerdo ${a.numero}` : 'Nuevo Acuerdo';
+    document.getElementById('modal-body').innerHTML = `
+    <div class="form-group" style="margin-bottom:16px">
+      <label>Tipo de contenido</label>
+      <select id="ac-tipo" disabled>
+        ${Object.entries(TIPOS_ACUERDO).map(([k, v]) => `<option value="${k}" ${(a?.tipo || 'acuerdo') === k ? 'selected' : ''}>${v}</option>`).join('')}
+      </select>
+    </div>
+    <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+      <div class="form-group" style="flex:1;min-width:140px">
+        <label>Fecha *</label>
+        <input type="date" id="ac-fecha" value="${a?.fecha || cdmxToday()}" />
+      </div>
+      <div class="form-group" style="flex:1;min-width:140px">
+        <label>Número de acuerdo *</label>
+        <input type="number" id="ac-correlativo" min="1" step="1" value="${a?.correlativo || ''}" />
+      </div>
+    </div>
+    <div class="acuse-file-hint" style="margin:-8px 0 16px">Nomenclatura: <strong id="ac-numero-preview">—</strong>${a ? '' : ' · se sugiere el siguiente consecutivo del año'}</div>
+    <div class="form-group" style="margin-bottom:16px">
+      <label>Síntesis o título *</label>
+      <textarea id="ac-sintesis" rows="3" maxlength="1000" placeholder="Acuerdo de la Comisión de Verificación de Integridad en Candidaturas por el que se...">${escHtml(a?.sintesis || '')}</textarea>
+    </div>
+    <div class="form-group" style="margin-bottom:16px">
+      <label>Autor</label>
+      <input type="text" value="${CVIC_AREA}" disabled />
+    </div>
+    <div class="form-group">
+      <label>Archivos</label>
+      ${a ? '<div id="ac-adjuntos"></div>' : ''}
+      <div class="acuse-add-row">
+        <input type="file" id="ac-archivos" accept=".pdf,.doc,.docx" multiple />
+        ${a ? `<button class="btn btn-primary btn-sm" onclick="addAcuerdoArchivos(${a.id})">⬆ Agregar</button>` : ''}
+      </div>
+      <div class="acuse-dropzone-hint" style="margin-top:6px">PDF o Word · hasta 10 archivos de 20 MB.</div>
+    </div>
+  `;
+    document.getElementById('modal-footer').innerHTML = `
+    <button class="btn btn-secondary" onclick="closeModal('modal-generic')">Cancelar</button>
+    <button class="btn btn-primary" id="ac-guardar" onclick="saveAcuerdo(${a?.id ?? 'null'})">Guardar</button>
+  `;
+    document.getElementById('ac-correlativo').addEventListener('input', updateAcuerdoNumeroPreview);
+    document.getElementById('ac-fecha').addEventListener('change', a ? updateAcuerdoNumeroPreview : sugerirCorrelativoAcuerdo);
+    openModal('modal-generic');
+    if (a) { updateAcuerdoNumeroPreview(); renderAcuerdoAdjuntos(a.id, a.adjuntos); }
+    else sugerirCorrelativoAcuerdo();
+}
+
+let acuerdoAdjuntos = []; // archivos del acuerdo abierto en el modal (para el nombre al descargar)
+
+function renderAcuerdoAdjuntos(id, items) {
+    acuerdoAdjuntos = items;
+    const cont = document.getElementById('ac-adjuntos');
+    if (!cont) return;
+    cont.innerHTML = items.length ? items.map(f => `
+        <div class="acuse-item">
+          <div class="acuse-item-head">
+            <div class="acuse-item-meta">
+              <div class="acuse-file-name" title="${escHtml(f.original_name)}">${escHtml(f.original_name)}</div>
+              <div class="acuse-file-hint">${f.size ? Math.max(1, Math.round(f.size / 1024)) + ' KB · ' : ''}${formatFecha((f.creado_en || '').slice(0, 10))}</div>
+            </div>
+          </div>
+          <div class="acuse-attached-btns">
+            <button class="btn btn-secondary btn-sm" onclick="downloadAcuerdoArchivo(${id},${f.id})">Descargar</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteAcuerdoArchivo(${id},${f.id})">Eliminar</button>
+          </div>
+        </div>`).join('')
+      : '<div class="acuse-file-hint" style="padding:4px 0 8px">Sin archivos aún.</div>';
+}
+
+async function saveAcuerdo(id) {
+    const fecha = document.getElementById('ac-fecha').value;
+    const correlativo = document.getElementById('ac-correlativo').value;
+    const sintesis = document.getElementById('ac-sintesis').value.trim();
+    if (!fecha || !correlativo || !sintesis) { toast('Fecha, número y síntesis son obligatorios', 'error'); return; }
+    const btn = document.getElementById('ac-guardar');
+    btn.disabled = true;
+    try {
+        if (id) {
+            await api('PUT', `/acuerdos/${id}`, { fecha, correlativo, sintesis });
+            // Archivos elegidos pero no agregados con "Agregar": se suben al guardar.
+            if (document.getElementById('ac-archivos').files.length) await addAcuerdoArchivos(id, true);
+            toast('Acuerdo actualizado', 'success');
+        } else {
+            const fd = new FormData();
+            fd.append('tipo', document.getElementById('ac-tipo').value);
+            fd.append('fecha', fecha);
+            fd.append('correlativo', correlativo);
+            fd.append('sintesis', sintesis);
+            for (const f of document.getElementById('ac-archivos').files) fd.append('archivos', f);
+            const r = await api('POST', '/acuerdos', fd, true);
+            toast(`Acuerdo ${r.numero} registrado`, 'success');
+        }
+        closeModal('modal-generic');
+        loadAcuerdos();
+    } catch (e) {
+        toast(e.message, 'error');
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+async function addAcuerdoArchivos(id, silencioso = false) {
+    const input = document.getElementById('ac-archivos');
+    if (!input.files.length) { toast('Selecciona al menos un archivo', 'error'); return; }
+    const fd = new FormData();
+    for (const f of input.files) fd.append('archivos', f);
+    // En modo silencioso (desde "Guardar") el error lo muestra quien llama.
+    const r = await api('POST', `/acuerdos/${id}/archivos`, fd, true).catch(e => { if (!silencioso) toast(e.message, 'error'); throw e; });
+    input.value = '';
+    renderAcuerdoAdjuntos(id, r.adjuntos);
+    if (!silencioso) { toast('Archivos agregados', 'success'); loadAcuerdos(); }
+}
+
+async function deleteAcuerdoArchivo(id, adjId) {
+    if (!confirm('¿Eliminar este archivo?')) return;
+    try {
+        await api('DELETE', `/acuerdos/${id}/archivos/${adjId}`);
+        const a = await api('GET', `/acuerdos/${id}`);
+        renderAcuerdoAdjuntos(id, a.adjuntos);
+        loadAcuerdos();
+    } catch (e) { toast(e.message, 'error'); }
+}
+
+function downloadAcuerdoArchivo(id, adjId) {
+    const f = acuerdoAdjuntos.find(x => x.id === adjId);
+    fetchDownload(`/api/of/acuerdos/${id}/archivos/${adjId}`, f?.original_name || 'acuerdo');
+}
+
+async function deleteAcuerdo(id) {
+    const a = state.acuerdos?.find(x => x.id === id);
+    if (!confirm(`¿Eliminar el ${a?.numero || 'acuerdo'} y todos sus archivos? Esta acción no se puede deshacer.`)) return;
+    try {
+        await api('DELETE', `/acuerdos/${id}`);
+        toast('Acuerdo eliminado', 'success');
+        loadAcuerdos();
+    } catch (e) { toast(e.message, 'error'); }
+}
+
 // ── Modal helpers ─────────────────────────────────────
 function openModal(id) { document.getElementById(id).classList.remove('hidden'); }
 function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
@@ -1407,6 +1611,16 @@ function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
 document.querySelectorAll('.nav-item[data-view]').forEach(item =>
     item.addEventListener('click', e => { e.preventDefault(); showView(item.dataset.view); })
 );
+
+// Acuerdos CVIC
+document.getElementById('btn-nuevo-acuerdo').addEventListener('click', () => openAcuerdoModal());
+document.getElementById('btn-acuerdos-filtrar').addEventListener('click', loadAcuerdos);
+document.getElementById('acuerdos-q').addEventListener('keydown', e => { if (e.key === 'Enter') loadAcuerdos(); });
+document.getElementById('btn-acuerdos-limpiar').addEventListener('click', () => {
+    document.getElementById('acuerdos-q').value = '';
+    document.getElementById('acuerdos-anio').value = '';
+    loadAcuerdos();
+});
 
 // Contador de caracteres — formulario de nuevo documento
 setupCharCounter('of-asunto', 500);

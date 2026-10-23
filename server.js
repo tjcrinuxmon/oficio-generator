@@ -41,6 +41,7 @@ app.use('/api/oficios',   require('./routes/oficios'));
 app.use('/api/firmantes', require('./routes/firmantes'));
 app.use('/api/anios',     require('./routes/anios'));
 app.use('/api/exportar',  require('./routes/exportar'));
+app.use('/api/acuerdos',  require('./routes/acuerdos'));
 
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
