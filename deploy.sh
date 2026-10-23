@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Despliegue de "oficios" (oficio-generator) en producción — POR TAG.
+# Despliegue de "oficios" (oficio-generator) en producción o staging — POR TAG.
 # Se ejecuta EN EL SERVIDOR, dentro del directorio del repo:
 #     ./deploy.sh            # despliega el tag más reciente (vX.Y.Z)
 #     ./deploy.sh v1.5.0     # despliega un tag específico
@@ -11,8 +11,14 @@
 
 set -euo pipefail
 
-APP_NAME="oficios"
 cd "$(dirname "$0")"
+# Proceso PM2 según dónde vive el checkout: staging (/home/usuario/staging/...)
+# o producción. Antes era fijo "oficios" y desde staging reiniciaba producción.
+case "$(pwd -P)" in
+  */staging/*) APP_NAME="oficios-staging" ;;
+  *)           APP_NAME="oficios" ;;
+esac
+echo "==> Proceso PM2: $APP_NAME"
 
 command -v git >/dev/null || { echo "✖ git no está instalado"; exit 1; }
 command -v pm2 >/dev/null || { echo "✖ pm2 no está instalado"; exit 1; }
