@@ -1827,10 +1827,11 @@ function resetCargaMasivaModal() {
     document.getElementById('btn-carga-masiva-cancelar').textContent = 'Cancelar';
 }
 
-document.getElementById('btn-carga-masiva').addEventListener('click', () => {
+function abrirCargaMasiva() {
     resetCargaMasivaModal();
     document.getElementById('modal-carga-masiva').classList.remove('hidden');
-});
+}
+document.getElementById('btn-carga-masiva').addEventListener('click', abrirCargaMasiva);
 
 document.getElementById('modal-carga-masiva-close').addEventListener('click', () => {
     document.getElementById('modal-carga-masiva').classList.add('hidden');
@@ -1841,7 +1842,7 @@ document.getElementById('btn-carga-masiva-cancelar').addEventListener('click', (
 
 document.getElementById('btn-descargar-plantilla').addEventListener('click', async (e) => {
     e.preventDefault();
-    fetchDownload('/api/of/oficios/carga-masiva/plantilla', 'plantilla_carga_masiva.xlsx');
+    fetchDownload('/api/of/oficios/carga-masiva/plantilla', 'plantilla_generacion_masiva.xlsx');
 });
 
 document.getElementById('btn-carga-masiva-subir').addEventListener('click', async () => {
@@ -1866,9 +1867,9 @@ document.getElementById('btn-carga-masiva-subir').addEventListener('click', asyn
 
         if (!res.ok) {
             if (data.errores?.length) {
-                let html = `<strong style="color:#dc2626">⚠ ${data.error}</strong><ul style="margin:8px 0 0 16px;list-style:disc">`;
+                let html = `<strong style="color:#dc2626">⚠ ${escHtml(data.error)}</strong><ul style="margin:8px 0 0 16px;list-style:disc">`;
                 data.errores.forEach(({ fila, errores }) => {
-                    html += `<li><strong>Fila ${fila}:</strong> ${errores.join(', ')}</li>`;
+                    html += `<li><strong>Fila ${fila}:</strong> ${escHtml(errores.join('; '))}</li>`;
                 });
                 html += '</ul>';
                 erroresEl.innerHTML = html;
@@ -1881,12 +1882,12 @@ document.getElementById('btn-carga-masiva-subir').addEventListener('click', asyn
 
         const descargaResultado = data.resultado_b64
             ? `<a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,${data.resultado_b64}"
-                  download="oficios_generados.xlsx" class="btn btn-secondary btn-sm"
+                  download="documentos_generados.xlsx" class="btn btn-secondary btn-sm"
                   style="margin-top:12px;display:inline-block">⬇ Descargar Excel con los números de oficio</a>`
             : '';
-        resultadoEl.innerHTML = `<strong style="color:#16a34a">✓ ${data.creados} oficios creados exitosamente</strong>
-            <ul style="margin:8px 0 0 16px;list-style:disc;max-height:140px;overflow-y:auto">
-              ${data.numeros.map(n => `<li style="font-size:12px">${n}</li>`).join('')}
+        resultadoEl.innerHTML = `<strong style="color:#16a34a">✓ ${data.creados} documentos generados</strong>
+            <ul style="margin:8px 0 0 16px;list-style:disc;max-height:160px;overflow-y:auto">
+              ${data.documentos.map(d => `<li style="font-size:12px">Fila ${d.fila}: <strong>${escHtml(d.numero)}</strong> · ${escHtml(d.tipo)}</li>`).join('')}
             </ul>
             ${descargaResultado}
             <p style="margin-top:10px;font-size:12px;color:#6b7280">Para procesar otro archivo, cierra y vuelve a abrir esta ventana.</p>`;
@@ -1895,8 +1896,8 @@ document.getElementById('btn-carga-masiva-subir').addEventListener('click', asyn
         document.getElementById('carga-masiva-form').style.display = 'none';
         btn.style.display = 'none';
         document.getElementById('btn-carga-masiva-cancelar').textContent = 'Cerrar';
-        toast(`${data.creados} oficios creados`, 'success');
-        loadHistorial(getHistorialFiltros());
+        toast(`${data.creados} documentos generados`, 'success');
+        if (state.view === 'historial') loadHistorial(getHistorialFiltros());
     } catch (e) {
         toast(e.message, 'error');
     } finally {
