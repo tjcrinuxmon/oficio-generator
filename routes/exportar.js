@@ -273,7 +273,7 @@ router.get('/docx/:id', async (req, res) => {
         `SELECT nombre, cargo FROM firmantes WHERE activo = 1 AND cvic_rol = 'secretaria_tecnica' ORDER BY es_titular DESC, id DESC LIMIT 1`
       ).get();
       const ccepRows = [
-        ccRow('C.c.e.p.', [rc('Lic. Guadalupe Taddei Zavala.', { bold: true, size: PT8 }), rc(' Consejera Presidenta del Consejo General del Instituto Nacional Electoral.- Presente.', { size: PT8 })]),
+        ccRow('C.c.e.p.', [rc('Blanca Yassahara Cruz García.', { bold: true, size: PT8 }), rc(' Consejera Presidenta Provisional del Instituto Nacional Electoral. Para su conocimiento.', { size: PT8 })]),
         ccRow('', [rc('Consejerías Electorales del Consejo General del Instituto Nacional Electoral', { bold: true, size: PT8 }), rc('. – Presentes.', { size: PT8 })]),
         ccRow('', [rc('Dr. Roberto Carlos Félix López.', { bold: true, size: PT8 }), rc(' Encargado de Despacho de la Secretaría Ejecutiva del Instituto Nacional Electoral. - Presente.', { size: PT8 })]),
       ];
@@ -543,8 +543,8 @@ router.get('/docx/:id', async (req, res) => {
             spacing: { after: 0 },
             children: [
               new TextRun({ text: 'C.c.p.\t', font: FONT, size: PT9, bold: true }),
-              new TextRun({ text: 'Guadalupe Taddei Zavala.', font: FONT, size: PT9, bold: true }),
-              new TextRun({ text: ' Consejera Presidenta del Instituto Nacional Electoral. Para su conocimiento.', font: FONT, size: PT9 }),
+              new TextRun({ text: 'Blanca Yassahara Cruz García.', font: FONT, size: PT9, bold: true }),
+              new TextRun({ text: ' Consejera Presidenta Provisional del Instituto Nacional Electoral. Para su conocimiento.', font: FONT, size: PT9 }),
             ],
           }),
           new Paragraph({
