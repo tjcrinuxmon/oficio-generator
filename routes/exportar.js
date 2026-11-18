@@ -165,7 +165,7 @@ router.get('/docx/:id', async (req, res) => {
   const ownerClause = req.user.rol !== 'admin' ? 'AND o.creado_por = ?' : '';
   const params = req.user.rol !== 'admin' ? [req.params.id, req.user.id] : [req.params.id];
   const o = db.prepare(
-    `SELECT o.*, f.nombre AS firmante_nombre, f.cargo AS firmante_cargo, u.nombre AS creado_por_nombre
+    `SELECT o.*, f.nombre AS firmante_nombre, f.cargo AS firmante_cargo, f.fundamento AS firmante_fundamento, u.nombre AS creado_por_nombre
      FROM oficios o
      LEFT JOIN firmantes f ON o.firmante_id = f.id
      LEFT JOIN usuarios u ON o.creado_por = u.id
@@ -267,15 +267,19 @@ router.get('/docx/:id', async (req, res) => {
         ccCell([new Paragraph({ spacing: { after: 0 }, children: label ? [rc(label, { bold: true, size: PT8 })] : [] })], 11),
         ccCell([new Paragraph({ spacing: { after: 0 }, children: runs })], 89),
       ]});
-      // C.c.e.p.: Presidencia lleva copia a la Secretaría Técnica (Anahí Silva Tosca);
-      // cuando firma la propia Secretaría Técnica, esa copia se omite (no aplica copiarse a sí misma).
+      // C.c.e.p.: Presidencia lleva copia a la Secretaría Técnica (quien tenga ese rol CVIC en el catálogo
+      // de firmantes); cuando firma la propia Secretaría Técnica, esa copia se omite (no aplica copiarse a sí misma).
+      const st = esST ? null : db.prepare(
+        `SELECT nombre, cargo FROM firmantes WHERE activo = 1 AND cvic_rol = 'secretaria_tecnica' ORDER BY es_titular DESC, id DESC LIMIT 1`
+      ).get();
       const ccepRows = [
         ccRow('C.c.e.p.', [rc('Lic. Guadalupe Taddei Zavala.', { bold: true, size: PT8 }), rc(' Consejera Presidenta del Consejo General del Instituto Nacional Electoral.- Presente.', { size: PT8 })]),
         ccRow('', [rc('Consejerías Electorales del Consejo General del Instituto Nacional Electoral', { bold: true, size: PT8 }), rc('. – Presentes.', { size: PT8 })]),
         ccRow('', [rc('Dr. Roberto Carlos Félix López.', { bold: true, size: PT8 }), rc(' Encargado de Despacho de la Secretaría Ejecutiva del Instituto Nacional Electoral. - Presente.', { size: PT8 })]),
       ];
-      if (!esST) {
-        ccepRows.push(ccRow('', [rc('Mtra. Anahí Silva Tosca.', { bold: true, size: PT8 }), rc(' Directora Ejecutiva de Asuntos Jurídicos y Secretaría Técnica de la Comisión de Verificación de Integridad en Candidaturas. - Presente.', { size: PT8 })]));
+      if (st) {
+        const stCargo = [st.cargo, 'Secretaría Técnica de la Comisión de Verificación de Integridad en Candidaturas'].filter(Boolean).join(' y ');
+        ccepRows.push(ccRow('', [rc(`${st.nombre}.`, { bold: true, size: PT8 }), rc(` ${stCargo}. - Presente.`, { size: PT8 })]));
       }
       const ccepTable = new Table({
         width: { size: 100, type: WidthType.PERCENTAGE }, borders: NO_BORDERS,
@@ -323,7 +327,7 @@ router.get('/docx/:id', async (req, res) => {
 
             // ── Firma: Presidencia o Secretaría Técnica de la Comisión (centrado) ──
             // El cargo de firma CVIC es propio de la Comisión, no el cargo DEAJ del catálogo de firmantes
-            // (p. ej. Anahí Silva Tosca firma DEAJ como Directora Ejecutiva, pero CVIC-ST como Secretaría Técnica).
+            // (p. ej. la titular firma DEAJ como Directora Ejecutiva, pero CVIC-ST como Secretaría Técnica).
             pc([rc(esST ? 'Secretaria Técnica de la Comisión de Verificación de Integridad en Candidaturas' : (o.firmante_cargo || 'Presidente de la Comisión de Verificación de Integridad en Candidaturas'), { bold: true }), new FootnoteReferenceRun(1)], AlignmentType.CENTER),
             emptyC(),
             pc([rc(o.firmante_nombre || '', { bold: true })], AlignmentType.CENTER),
@@ -419,8 +423,10 @@ router.get('/docx/:id', async (req, res) => {
     ];
     const headerChildren = esExterno ? headerExterno : [headerTable];
 
-    const NOTA_FUNDAMENTO = 'Con fundamento en el artículo 45, numeral 1, inciso p) de la Ley General de Instituciones y Procedimientos Electorales y de conformidad con el oficio INE/PC/193/2026';
-    const esTitular = !o.requiere_justificacion;
+    // Nota al pie con el fundamento de la firma: sale del firmante (editable en Administración → Firmantes),
+    // así cada oficio conserva el fundamento de quien lo firmó.
+    const NOTA_FUNDAMENTO = (o.firmante_fundamento || '').trim();
+    const esTitular = !o.requiere_justificacion && !!NOTA_FUNDAMENTO;
 
     const doc = new Document({
       ...(esTitular ? {

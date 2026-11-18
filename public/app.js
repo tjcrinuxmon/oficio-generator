@@ -1260,6 +1260,10 @@ function openFirmanteModal(id = null) {
         Es titular
       </label>
     </div>
+    <div class="form-group" style="margin-bottom:16px">
+      <label>Fundamento de la firma (nota al pie en oficios DEAJ que firma el titular)</label>
+      <textarea id="fm-fundamento" rows="3" maxlength="1000" placeholder="Con fundamento en el artículo … y de conformidad con el oficio …"></textarea>
+    </div>
     ${f ? `
     <div class="form-group">
       <label style="flex-direction:row;align-items:center;gap:8px;text-transform:none;letter-spacing:0;font-size:13px;font-weight:500">
@@ -1272,6 +1276,8 @@ function openFirmanteModal(id = null) {
     <button class="btn btn-secondary" onclick="closeModal('modal-generic')">Cancelar</button>
     <button class="btn btn-primary" onclick="saveFirmante(${id ?? 'null'})">Guardar</button>
   `;
+    // El fundamento es texto libre largo: se asigna por .value para no tener que escaparlo en el HTML.
+    document.getElementById('fm-fundamento').value = f?.fundamento || '';
     openModal('modal-generic');
 }
 
@@ -1281,13 +1287,14 @@ async function saveFirmante(id) {
     const es_titular = document.getElementById('fm-titular').checked;
     const ambito = document.getElementById('fm-ambito').value;
     const cvic_rol = document.getElementById('fm-cvic-rol').value || null;
+    const fundamento = document.getElementById('fm-fundamento').value.trim();
     const activoEl = document.getElementById('fm-activo');
     if (!nombre || !cargo) { toast('Nombre y cargo son requeridos', 'error'); return; }
     try {
         if (id) {
-            await api('PUT', `/firmantes/${id}`, { nombre, cargo, es_titular, ambito, cvic_rol, activo: activoEl ? activoEl.checked : undefined });
+            await api('PUT', `/firmantes/${id}`, { nombre, cargo, es_titular, ambito, cvic_rol, fundamento, activo: activoEl ? activoEl.checked : undefined });
         } else {
-            await api('POST', '/firmantes', { nombre, cargo, es_titular, ambito, cvic_rol });
+            await api('POST', '/firmantes', { nombre, cargo, es_titular, ambito, cvic_rol, fundamento });
         }
         toast('Firmante guardado', 'success');
         closeModal('modal-generic');
@@ -1685,6 +1692,8 @@ document.getElementById('of-firmante').addEventListener('change', function () {
     const group = document.getElementById('justificacion-group');
     const textarea = document.getElementById('of-justificacion');
     if (currentTipo !== 'cvic' && firmante && !firmante.es_titular) {
+        const titular = state.firmantes.find(f => f.es_titular);
+        document.getElementById('justificacion-titular').textContent = titular ? titular.nombre : 'la persona titular';
         group.style.display = '';
         textarea.required = true;
     } else {

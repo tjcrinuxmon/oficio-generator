@@ -102,6 +102,13 @@ try { db.exec(`ALTER TABLE oficios ADD COLUMN elaboro_nombre TEXT`); } catch (_)
 try { db.exec(`ALTER TABLE oficios ADD COLUMN elaboro_puesto TEXT`); } catch (_) {}
 try { db.exec(`ALTER TABLE oficios ADD COLUMN ambito TEXT DEFAULT 'interno'`); } catch (_) {}
 try { db.exec(`ALTER TABLE oficios ADD COLUMN incluir_vre INTEGER DEFAULT 1`); } catch (_) {}
+// Fundamento de la firma del titular (nota al pie en oficios DEAJ). Antes estaba fijo en exportar.js;
+// al crear la columna se le asigna a quien era titular entonces, para que sus oficios se regeneren igual.
+try {
+  db.exec(`ALTER TABLE firmantes ADD COLUMN fundamento TEXT`);
+  db.prepare(`UPDATE firmantes SET fundamento = ? WHERE es_titular = 1`)
+    .run('Con fundamento en el artículo 45, numeral 1, inciso p) de la Ley General de Instituciones y Procedimientos Electorales y de conformidad con el oficio INE/PC/193/2026');
+} catch (_) {}
 
 // Adjuntos del oficio (acuses / documentos): hasta 3 por oficio.
 db.exec(`
