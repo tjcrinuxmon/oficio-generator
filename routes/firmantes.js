@@ -28,8 +28,9 @@ router.post('/', adminMiddleware, (req, res) => {
   const esTitular = es_titular ? 1 : 0;
   const ambito = AMBITOS.includes(req.body.ambito) ? req.body.ambito : 'deaj';
   const cvicRol = CVIC_ROLES.includes(req.body.cvic_rol) ? req.body.cvic_rol : null;
+  const fundamento = typeof req.body.fundamento === 'string' ? req.body.fundamento.trim().slice(0, 1000) || null : null;
   if (esTitular) db.prepare(`UPDATE firmantes SET es_titular = 0`).run();
-  const r = db.prepare(`INSERT INTO firmantes (nombre, cargo, es_titular, ambito, cvic_rol) VALUES (?, ?, ?, ?, ?)`).run(nombre, cargo, esTitular, ambito, cvicRol);
+  const r = db.prepare(`INSERT INTO firmantes (nombre, cargo, es_titular, ambito, cvic_rol, fundamento) VALUES (?, ?, ?, ?, ?, ?)`).run(nombre, cargo, esTitular, ambito, cvicRol, fundamento);
   res.status(201).json(db.prepare(`SELECT * FROM firmantes WHERE id = ?`).get(r.lastInsertRowid));
 });
 
@@ -45,6 +46,9 @@ router.put('/:id', adminMiddleware, (req, res) => {
   if (req.body.cvic_rol !== undefined) {
     const cvicRol = CVIC_ROLES.includes(req.body.cvic_rol) ? req.body.cvic_rol : null;
     db.prepare(`UPDATE firmantes SET cvic_rol = ? WHERE id = ?`).run(cvicRol, req.params.id);
+  }
+  if (typeof req.body.fundamento === 'string') {
+    db.prepare(`UPDATE firmantes SET fundamento = ? WHERE id = ?`).run(req.body.fundamento.trim().slice(0, 1000) || null, req.params.id);
   }
   if (es_titular !== undefined) {
     if (es_titular) db.prepare(`UPDATE firmantes SET es_titular = 0`).run();
