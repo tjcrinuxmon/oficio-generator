@@ -171,12 +171,22 @@ router.post('/acuerdo', (req, res) => {
 
 // PUT /api/oficios/:id
 router.put('/:id', (req, res) => {
-  const { estatus, fecha, destinatario, cargo_destinatario, institucion, asunto, cuerpo, id_sai, justificacion_sai, sintesis, firmante_id, justificacion_firmante, razon, solicita, area, url_solicitante, razon_reactivacion, reviso_nombre, reviso_puesto, elaboro_nombre, elaboro_puesto, ambito, incluir_vre } = req.body;
   const ownerClause = req.user.rol === 'admin' ? ''
     : req.user.area === CVIC_AREA ? `AND (creado_por = ? OR tipo = 'acuerdo')` // acuerdos: los edita toda la Comisión
     : 'AND creado_por = ?';
   const checkParams = req.user.rol !== 'admin' ? [req.params.id, req.user.id] : [req.params.id];
-  const oficioActual = db.prepare(`SELECT id, tipo, modalidad_cvic, anio FROM oficios WHERE id = ? ${ownerClause}`).get(...checkParams);
+  let oficioActual = db.prepare(`SELECT id, tipo, modalidad_cvic, anio FROM oficios WHERE id = ? ${ownerClause}`).get(...checkParams);
+  // Enlace con un oficio de su dirección que no creó: solo seguimiento (estatus, ID SAI; los acuses
+  // van por /:id/acuse). Lo demás del oficio no se toca: se descarta lo que llegue de otros campos.
+  let body = req.body;
+  if (!oficioActual && req.user.rol === 'enlace') {
+    oficioActual = db.prepare(`SELECT id, tipo, modalidad_cvic, anio FROM oficios WHERE id = ? AND area = ?`).get(req.params.id, req.user.area || '');
+    if (oficioActual) {
+      const SEGUIMIENTO = ['estatus', 'razon_reactivacion', 'id_sai', 'justificacion_sai'];
+      body = Object.fromEntries(Object.entries(req.body || {}).filter(([k]) => SEGUIMIENTO.includes(k)));
+    }
+  }
+  const { estatus, fecha, destinatario, cargo_destinatario, institucion, asunto, cuerpo, id_sai, justificacion_sai, sintesis, firmante_id, justificacion_firmante, razon, solicita, area, url_solicitante, razon_reactivacion, reviso_nombre, reviso_puesto, elaboro_nombre, elaboro_puesto, ambito, incluir_vre } = body;
   if (!oficioActual) {
     return res.status(404).json({ error: 'Oficio no encontrado' });
   }
