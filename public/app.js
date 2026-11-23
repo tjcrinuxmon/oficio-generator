@@ -143,6 +143,8 @@ function labelEstatus(e) {
 function saiEstado(o) {
     if (o.id_sai)            return { key: 'capturado', label: 'SAI capturado', color: '#15803d', bg: '#dcfce7' };
     if (o.justificacion_sai) return { key: 'no_aplica', label: 'SAI no aplica',  color: '#4b5563', bg: '#f3f4f6' };
+    // Cancelado sin ID SAI: ya no se pide capturarlo ni cuenta como pendiente (si se reactiva, vuelve a contar).
+    if (o.estatus === 'cancelado') return { key: 'no_aplica', label: 'No aplica (cancelado)', color: '#4b5563', bg: '#f3f4f6' };
     return                          { key: 'pendiente', label: 'Pendiente de ID SAI', color: '#b91c1c', bg: '#fee2e2' };
 }
 function saiBadge(o) {
@@ -561,6 +563,8 @@ async function openOficioModal(id, readOnly = false) {
         currentModalAcuse = o.acuse_path || null;
         currentModalOriginalEstatus = o.estatus;
         const isAdmin         = state.user.rol === 'admin';
+        // Enlace viendo un oficio de su dirección que no creó: solo estatus, ID SAI y acuses.
+        const soloSeguimiento = state.user.rol === 'enlace' && o.creado_por != state.user.id;
         const isOpinion       = o.tipo === 'opinion';
         const isDictamen      = o.tipo === 'dictamen';
         const isCertificacion = o.tipo === 'certificacion';
@@ -658,9 +662,11 @@ async function openOficioModal(id, readOnly = false) {
 
         <div class="detail-item">
           <span class="detail-label">Firmante</span>
-          <select id="det-firmante" class="filter-select" style="width:100%">
-            <option value="">—</option>${firmanteOpts}
-          </select>
+          ${soloSeguimiento
+            ? `<span class="detail-value">${escHtml(o.firmante_nombre || '—')}</span>`
+            : `<select id="det-firmante" class="filter-select" style="width:100%">
+                 <option value="">—</option>${firmanteOpts}
+               </select>`}
         </div>
         <div class="detail-item">
           <span class="detail-label">Solicita</span>
@@ -680,7 +686,7 @@ async function openOficioModal(id, readOnly = false) {
           <span class="detail-value">${o.creado_por_nombre || '—'}</span>
         </div>
 
-        ${readOnly
+        ${readOnly || soloSeguimiento
           ? (o.justificacion_firmante ? `
         <div class="detail-item full">
           <span class="detail-label">Justificación de firmante</span>
@@ -694,7 +700,7 @@ async function openOficioModal(id, readOnly = false) {
 
         <div class="detail-item full">
           <span class="detail-label">Ámbito del documento</span>
-          ${!readOnly
+          ${!readOnly && !soloSeguimiento
             ? `<select id="det-ambito" class="filter-select" style="width:100%" onchange="applyDetVre()">
                  <option value="interno" ${o.ambito === 'externo' ? '' : 'selected'}>Interno (logo INE)</option>
                  <option value="externo" ${o.ambito === 'externo' ? 'selected' : ''}>Externo (Escudo Nacional de fondo)</option>

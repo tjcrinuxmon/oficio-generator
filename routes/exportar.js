@@ -164,13 +164,24 @@ router.get('/excel', async (req, res) => {
 router.get('/docx/:id', async (req, res) => {
   const ownerClause = req.user.rol !== 'admin' ? 'AND o.creado_por = ?' : '';
   const params = req.user.rol !== 'admin' ? [req.params.id, req.user.id] : [req.params.id];
-  const o = db.prepare(
+  let o = db.prepare(
     `SELECT o.*, f.nombre AS firmante_nombre, f.cargo AS firmante_cargo, f.fundamento AS firmante_fundamento, u.nombre AS creado_por_nombre
      FROM oficios o
      LEFT JOIN firmantes f ON o.firmante_id = f.id
      LEFT JOIN usuarios u ON o.creado_por = u.id
      WHERE o.id = ? ${ownerClause}`
   ).get(...params);
+  // Enlace: también genera el Word de los oficios de su dirección que no creó (igual que los ve,
+  // les sube acuse y les cambia estatus e ID SAI). Los oficios CVIC siguen siendo solo de la Comisión.
+  if (!o && req.user.rol === 'enlace') {
+    o = db.prepare(
+      `SELECT o.*, f.nombre AS firmante_nombre, f.cargo AS firmante_cargo, f.fundamento AS firmante_fundamento, u.nombre AS creado_por_nombre
+       FROM oficios o
+       LEFT JOIN firmantes f ON o.firmante_id = f.id
+       LEFT JOIN usuarios u ON o.creado_por = u.id
+       WHERE o.id = ? AND o.area = ? AND (o.tipo IS NULL OR o.tipo NOT IN ('cvic', 'acuerdo'))`
+    ).get(req.params.id, req.user.area || '');
+  }
   if (!o) return res.status(404).json({ error: 'Oficio no encontrado' });
   // Los acuerdos CVIC se suben ya firmados; no se genera Word.
   if (o.tipo === 'acuerdo') return res.status(400).json({ error: 'Los acuerdos no generan Word: descarga sus archivos desde el detalle' });
